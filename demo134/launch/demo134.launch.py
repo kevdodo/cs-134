@@ -23,8 +23,10 @@ def generate_launch_description():
         executable = 'hebinode',
         output     = 'screen',
         parameters = [{'family': 'robotlab'},
-                      {'motors': ['9.6', '9.1']},
-                      {'joints': ['one', 'two']}])
+
+                    # Base is 3.3, 3.5 shoulder, 3.4 Wrist
+                      {'motors': ['3.3', '3.5', '3.4']},
+                      {'joints': ['one', 'two', 'three']}])
 
     # Configure a node for the simple demo.
     node_demo = Node(

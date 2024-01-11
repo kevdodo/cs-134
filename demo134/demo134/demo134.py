@@ -10,13 +10,14 @@ import rclpy
 from rclpy.node         import Node
 from sensor_msgs.msg    import JointState
 
-
+import time
+from demo134.TrajectoryUtils import *
 #
 #   Definitions
 #
 RATE = 100.0            # Hertz
 
-
+GO_TO_START_T = 5    # Seconds
 #
 #   DEMO Node Class
 #
@@ -50,6 +51,10 @@ class DemoNode(Node):
         self.get_logger().info("Sending commands with dt of %f seconds (%fHz)" %
                                (self.timer.timer_period_ns * 1e-9, rate))
 
+
+        self.start_time = time.time()
+        self.t = time.time()
+
     # Shutdown
     def shutdown(self):
         # No particular cleanup, just shut down the node.
@@ -82,12 +87,43 @@ class DemoNode(Node):
 
     # Send a command - called repeatedly by the timer.
     def sendcmd(self):
+        # this is the previous time
+        dt = time.time() - self.t 
+
+        self.t = time.time()
+
+        t = self.t - self.start_time
+
+        PHASE = .1
+
+        end_init_pos = np.array([0.0, .05 * np.sin(2 * 
+            np.pi * PHASE), .1 * np.sin(4 * np.pi * (2 * PHASE))])
+
+        # Order 0-2: 3.3 Base, 3.5 shoulder, 3.4 Wrist
+
+        if t < GO_TO_START_T - 1:
+            p, v = spline(t, GO_TO_START_T - 1, np.array(self.position0), end_init_pos, np.zeros((3)), np.zeros((3)))
+        elif t < GO_TO_START_T:
+            p, v = spline(GO_TO_START_T - 1, GO_TO_START_T - 1, np.array(self.position0), end_init_pos, np.zeros((3)), np.zeros((3)))             
+        else:
+            p, v = spline(GO_TO_START_T, GO_TO_START_T, np.array(self.position0), np.zeros((3)), np.zeros((3)), np.zeros((3)))
+            
+            p[0] = .2 * np.sin( np.pi * (t - GO_TO_START_T))
+            p[1] = .05 * np.sin(1/2 * np.pi * (t - GO_TO_START_T + PHASE))
+            p[2] = .3 * np.sin(2 * np.pi * (t - GO_TO_START_T + 2 * PHASE))
+
+            v[0] = .2 * np.pi * np.cos(np.pi * (t - GO_TO_START_T))
+            v[1] = .05 * 1/2 * np.pi * np.cos(1/2 * np.pi * (t - GO_TO_START_T + PHASE))
+            v[2] = .3 * 2 * np.pi * np.cos(2 * np.pi * (t - GO_TO_START_T + 2 * PHASE))
+
+
+        
         # Build up the message and publish.
         self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
-        self.cmdmsg.name         = ['one', 'two']
-        self.cmdmsg.position     = [1.0, 2.0]
-        self.cmdmsg.velocity     = []
-        self.cmdmsg.effort       = [0.0, 0.0]
+        self.cmdmsg.name         = ['one', 'two', 'three']
+        self.cmdmsg.position     = list(p)
+        self.cmdmsg.velocity     = list(v)
+        self.cmdmsg.effort       = [0.0, 0.0, 1.74]
         self.cmdpub.publish(self.cmdmsg)
 
 
