@@ -1,8 +1,6 @@
-'''KinematicChain.py
+'''KinematicChainSol.py
 
-   This is the skeleton code for Kinematic Chains (HW5 Problem 5).
-
-   PLEASE EDIT/FIX.  See "FIXME" tags!
+   This is the solution code for Kinematic Chains (HW5 Problem 5).
 
    chain = KinematicChain(node, basefame, tipframe, expectedjointnames)
 
@@ -31,7 +29,7 @@ from std_msgs.msg               import String
 from urdf_parser_py.urdf        import Robot
 
 # Grab the utilities
-from TransformHelpers   import *
+from basic134.TransformHelpers   import *
 
 
 #
@@ -123,9 +121,9 @@ class KinematicChain():
         raise Exception(string)
 
     # Initialization.
-    def __init__(self, node, baseframe, tipframe, expectedjointnames):
+    def __init__(self, baseframe, tipframe, expectedjointnames):
         # Store the node (for the helper functions).
-        self.node = node
+        self.node = Node('kintest')
 
         # Prepare the information.
         self.steps = []
@@ -223,23 +221,16 @@ class KinematicChain():
         # Walk the chain, one step at a time.  Record the T transform
         # w.r.t. world for each step.
         for s in self.steps:
-            # FIXME - Note the step s contains:
-            #   s.Tshift     Transform w.r.t. the previous frame
-            #   s.elocal     Joint axis in the local frame
-            #   s.dof        Joint number
-            #   q[s.dof]     Joint position (angle for revolute, displacement for linear)
-            if s.type is Joint.REVOLUTE:
-                r = Rote(s.elocal, q[s.dof])
-                p = pzero()
-                T = T @ T_from_Rp(r, p)
-            elif s.type is Joint.LINEAR:
+            # Always apply the shift.
+            T = T @ s.Tshift
 
-                r = Reye()
-                p = pe(s.elocal, q[s.dof])
-                T = T @ T_from_Rp(r, p)
-            else:
-                # Fixed is only shifting.
-                continue
+            # For active joints, also apply the joint movement.
+            if s.type is Joint.REVOLUTE:
+                # Revolute is a rotation:
+                T = T @ T_from_Rp(Rote(s.elocal, q[s.dof]), pzero())
+            elif s.type is Joint.LINEAR:
+                # Linear is a translation:
+                T = T @ T_from_Rp(Reye(), s.elocal * q[s.dof])
 
             # Store the info (w.r.t. world frame) into the step.
             s.T = T
@@ -247,7 +238,7 @@ class KinematicChain():
             s.R = R_from_T(T)
             s.e = R_from_T(T) @ s.elocal
 
-        # Collect the tip information w.r.t. world!
+        # Collect the tip information.
         ptip = p_from_T(T)
         Rtip = R_from_T(T)
 
@@ -255,19 +246,14 @@ class KinematicChain():
         Jv = np.zeros((3,self.dofs))
         Jw = np.zeros((3,self.dofs))
         for s in self.steps:
-            # FIXME AGAIN.  From the above, the step now includes:
-            #   s.p     Position w.r.t. world
-            #   s.e     Joint axis w.r.t. world
-            
-            # Take action based on the joint type.
             if s.type is Joint.REVOLUTE:
                 # Revolute is a rotation:
-                Jv[:,s.dof:s.dof+1] = cross(s.e, (ptip - s.p))
+                Jv[:,s.dof:s.dof+1] = cross(s.e, ptip - s.p)
                 Jw[:,s.dof:s.dof+1] = s.e
             elif s.type is Joint.LINEAR:
                 # Linear is a translation:
                 Jv[:,s.dof:s.dof+1] = s.e
-                Jw[:,s.dof:s.dof+1] = 0
+                Jw[:,s.dof:s.dof+1] = np.zeros((3,1))
 
         # Return the info
         return (ptip, Rtip, Jv, Jw)

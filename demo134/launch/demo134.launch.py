@@ -26,13 +26,13 @@ def generate_launch_description():
 
                     # Base is 3.3, 3.5 shoulder, 3.4 Wrist
                       {'motors': ['3.3', '3.5', '3.4']},
-                      {'joints': ['one', 'two', 'three']}])
+                      {'joints': ['base', 'shoulder', 'elbow']}])
 
     # Configure a node for the simple demo.
     node_demo = Node(
         name       = 'demo', 
         package    = 'demo134',
-        executable = 'demo134',
+        executable = 'bruh',
         output     = 'screen')
 
 
