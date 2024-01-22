@@ -18,6 +18,8 @@ import time
 from demo134.TrajectoryUtils import *
 from demo134.TransformHelpers import *
 
+import matplotlib.pyplot as plt
+
 #
 #   Definitions
 #
@@ -45,6 +47,9 @@ class DemoNode(Node):
         self.qdot = np.zeros((3, 1))
         self.effort = np.zeros((3, 1))
 
+        self.joint_to_return_from = np.copy(self.jointPos0)
+        self.vel_to_return_from = np.copy(self.actualJointVel)
+        self.start_vel_to_point = np.zeros((3, 1))
         # Create a message and publisher to send the joint commands.
         self.cmdmsg = JointState()
         self.cmdpub = self.create_publisher(JointState, '/joint_commands', 10)
@@ -67,6 +72,7 @@ class DemoNode(Node):
                                (self.timer.timer_period_ns * 1e-9, rate))
 
         self.hold = False
+        self.detected = True
         self.go = False
 
         # This is to get point coordinates
@@ -83,14 +89,15 @@ class DemoNode(Node):
         self.chain = KinematicChain('world', 'tip', self.jointnames())
         self.idleJointPos = np.radians([0,70,180]).reshape((3,1))
         self.idlePosition, _, _, _ = self.chain.fkin(self.idleJointPos)
+        self.coords_from, _, _, _ = self.chain.fkin(self.actualJointPos)
 
         self.t = 0.0
 
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         self.start_time = sec + nano*10**(-9)
 
-        self.gammaFactor = .1
-        self.lamFactor = .1
+        self.gammaFactor = 0.0
+        self.lamFactor = 0.0
        
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
@@ -134,16 +141,33 @@ class DemoNode(Node):
         self.grabready = True
     
     def start_to_idle(self, t, T):
-        q, qDot = spline5(t, T, np.array(self.q).reshape(3,1), 
-                        self.idleJointPos.reshape(3,1), np.zeros((3, 1)), 
-                        np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1))) 
+        # tplot = np.arange(0, GO_TO_START_T, .1)
+
+        # q, qDot = spline5(tplot, GO_TO_START_T, np.array(self.joint_to_return_from).reshape((3,1)), 
+        #                 self.idleJointPos.reshape((3,1)), np.zeros((3, 1)), 
+        #                 np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1)))
+        # plt.plot(np.broadcast_to(tplot, (3, 50)).T, qDot.T)
+        # plt.show()
+
+        # exit()
+        q, qDot = spline(t, T, np.array(self.joint_to_return_from).reshape((3,1)), 
+                        self.idleJointPos.reshape((3,1)), 
+                        np.array(self.vel_to_return_from).reshape((3,1)), 
+                        np.zeros((3, 1))) 
         return q, qDot
 
     def go_to_coords(self, t, T, x, y, z):
-        p, v = spline(t, T, np.array(self.idlePosition).reshape((3,1)), 
-                        np.array([x, y, z]).reshape(3,1), np.zeros((3, 1)), np.zeros((3,1)))
+        p, v = spline(t, T, np.array(self.coords_from).reshape((3,1)), 
+                        np.array([x, y, z]).reshape(3,1), 
+                        np.zeros((3,1)),
+                          np.zeros((3,1)))
 
         return p, v
+    
+    def collision_detection(self, q, qdot):
+        return (np.abs(np.array(self.actualJointPos).reshape((3, 1)) - np.array(q).reshape((3, 1))) > 1).any() or \
+               (np.abs(np.array(self.actualJointVel).reshape((3, 1)) - np.array(qdot).reshape((3, 1))) > 1).any()  or \
+               (np.abs(np.array(self.actualJointEff).reshape((3, 1)) - np.array(self.effort).reshape((3, 1))) > 1).any()
     
     # Send a command - called repeatedly by the timer.
     def sendcmd(self):
@@ -155,23 +179,34 @@ class DemoNode(Node):
 
         if not self.hold and not self.go:
             if self.t >= GO_TO_START_T:
+                # Enter hold
                 self.go = False
                 self.hold = True
                 self.start_time = now
                 self.t = now - self.start_time
+                self.detected = False
             else:
+                # Go to start
                 q, qdot = self.start_to_idle(self.t, GO_TO_START_T)
+                self.go = False
+                self.hold = False
         if self.hold and not self.go:
             if len(self.pointx) > 0:
+                # Go to point
                 self.go = True
                 self.hold = False
                 self.gox = self.pointx.pop(0)
                 self.goy = self.pointy.pop(0)
                 self.goz = self.pointz.pop(0)
+                self.joint_to_return_from = self.actualJointPos 
+                self.vel_to_return_from = self.actualJointVel
+                self.coords_from, _, _, _ = self.chain.fkin(self.actualJointPos)
 
             else:
+                # Hold
                 q, qdot = self.start_to_idle(GO_TO_START_T, GO_TO_START_T)
-
+                self.hold = True
+                self.go = False
             self.start_time = now
             self.t = now - self.start_time
 
@@ -184,8 +219,16 @@ class DemoNode(Node):
                 self.t = now - self.start_time                
                 q = self.q
                 qdot = self.qdot
-            else:
 
+                self.joint_to_return_from = self.actualJointPos
+                self.vel_to_return_from = self.actualJointVel
+                # tplot = np.arange(0, GO_TO_START_T, .1)
+                # plt.plot(tplot, spline5(tplot, GO_TO_START_T, np.array(self.q).reshape(3,1), 
+                #                 self.idleJointPos.reshape(3,1), np.zeros((3, 1)), 
+                #                 np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1))))
+                # plt.show()
+                # exit()
+            else:
                 p, v = self.go_to_coords(self.t, GO_TO_POINT_T, self.gox, self.goy, self.goz)
                 (p_actual, r, Jv, Jw) = self.chain.fkin(self.q)
                 e = ep(p_actual, p)
@@ -193,23 +236,37 @@ class DemoNode(Node):
                 Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + gamma**2 * np.eye(3))
 
                 qdot = Jinv @ (v + self.lamFactor * e)
-
-
                 q = self.q + self.qdot*dt
-        if abs(np.array(self.actualJointPos[1]) - self.q[1]) > 2 or \
-               abs(np.array(self.actualJointVel[1]) - self.qdot[1]) > 2 or \
-               abs(np.array(self.actualJointEff[1]) - self.effort[1]) > 2:
-                self.go = False
-                self.hold = False
-                print("a;lskdfja;lksnv")
+        # print(np.array(self.actualJointPos).shape,  np.array(q).shape)
+        if self.collision_detection(q, qdot) and not self.detected:
+            # print("wuttt")
+            self.detected = True
+            self.go = False
+            self.hold = False
+            self.joint_to_return_from = self.actualJointPos 
+            self.vel_to_return_from = self.actualJointVel
+
+            self.start_time = now
+            self.t = now - self.start_time
+        # print("pos diff")
+        # print(abs(np.array(self.actualJointPos) - np.array(q).reshape((3))))
+
+        # print("velocity diff")
+        # print(abs(np.array(self.actualJointVel) - np.array(qdot).reshape((3))))
+
+        # print("effort diff")
+        # print(abs(np.array(self.actualJointEff) - np.array(self.effort).reshape((3))))
+
+        # print("a;lskdfja;lksnv")
         # x_dot = J qdot
-        e = np.array([0.0, 1.23646962 * np.cos(q[1, 0]), 0.0])
+                # .23646962 * np.cos(q[1, 0])
+        e = np.array([0.0, 1.60541142 * np.cos(self.actualJointPos[1]), 0.0])
         self.q = q
 
         self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
         self.cmdmsg.name         = self.jointnames()
-        self.cmdmsg.position     = list(self.q[:, 0])
-        self.cmdmsg.velocity     = list(qdot[:, 0])
+        self.cmdmsg.position     = list(q[:, 0]) #(np.nan, np.nan, np.nan) # #  (np.nan, np.nan, np.nan)
+        self.cmdmsg.velocity     = list(qdot[:, 0]) #(np.nan, np.nan, np.nan) # # (np.nan, np.nan, np.nan)
         self.cmdmsg.effort       = list(e)
       
         self.q = q

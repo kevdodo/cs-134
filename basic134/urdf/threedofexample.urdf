@@ -61,7 +61,7 @@
   <joint name="lbracket" type="fixed">
     <parent link="lbracket"/>
     <child  link="shouldermotor"/>
-    <origin xyz="0 0.05 0.123" rpy="0 -1.5708 1.5708"/>	  <!-- L BRACKET DIMENIONS -->
+    <origin xyz="0 0.05 0.13" rpy="0 -1.5708 1.5708"/>	  <!-- L BRACKET DIMENIONS -->
   </joint>
 
   <!-- SHOULDER MOTOR: Thickness: X5 = 31.1mm, X8 = 45.1mm -->

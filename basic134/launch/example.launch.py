@@ -122,10 +122,10 @@ def generate_launch_description():
         # node_hebi,
 
         # # STEP 3: Start if we want the demo code to command the robot.
-        node_robot_state_publisher_ACTUAL,
-        node_rviz,
-        node_hebi,
-        node_demo,
+        # node_robot_state_publisher_ACTUAL,
+        # node_rviz,
+        # node_hebi,
+        # node_demo,
 
         # # ALTERNATE: Start if we want the GUI to command the robot.
         # # THIS WILL BE **VERY** JITTERY, running at 10Hz!
@@ -135,8 +135,8 @@ def generate_launch_description():
         # node_gui,
 
         # # ALTERNATE: Start if we want RVIZ to watch the commands.
-        # node_robot_state_publisher_COMMAND,
-        # node_rviz,
-        # node_hebi,
-        # node_demo,
+        node_robot_state_publisher_COMMAND,
+        node_rviz,
+        node_hebi,
+        node_demo,
     ])
