@@ -90,9 +90,9 @@ def generate_launch_description():
 
     # Configure a node for the simple demo.  PLACEHOLDER FOR YOUR CODE!!
     node_demo = Node(
-        name       = 'temp', 
+        name       = 'color_touch', 
         package    = 'basic134',
-        executable = 'temp',
+        executable = 'color_touch',
         output     = 'screen')
 
     # Configure a node for the GUI to command the robot.

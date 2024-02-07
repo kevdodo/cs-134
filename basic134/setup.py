@@ -27,7 +27,9 @@ setup(
         'console_scripts': [
             'demo134      = basic134.demo134:main',
             'receivepoint = basic134.receivepoint:main',
-            'temp         = basic134.temp:main'
+            'temp         = basic134.temp:main',
+            'color_touch  = basic134.color_touch:main',
+            'mapping      = basic134.mapping:main'
         ],
     },
 )

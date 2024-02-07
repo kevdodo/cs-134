@@ -21,7 +21,7 @@
   <!-- BASE PLATE: Shift across the base plate to the base motor. --> 
   <link name="baseplate">
     <visual>
-      <origin xyz="0.0 0.025 0.0125" rpy="0 0 0"/>
+      <origin xyz="0.0 -0.025 0.0125" rpy="0 0 0"/>
       <geometry>
 	<box size="0.2 0.1 0.0230"/>
       </geometry>
@@ -32,7 +32,7 @@
   <joint name="baseplate" type="fixed">
     <parent link="baseplate"/>
     <child  link="basemotor"/>
-    <origin xyz="0 0 0.0230" rpy="0 0 -1.5708"/>
+    <origin xyz="-0.0145 .016 0.0095" rpy="0 0 -1.5708"/>
   </joint>
 
   <!-- BASE MOTOR: Thickness: X5 = 31.1mm, X8 = 45.1mm -->
@@ -61,7 +61,7 @@
   <joint name="lbracket" type="fixed">
     <parent link="lbracket"/>
     <child  link="shouldermotor"/>
-    <origin xyz="0 0.05 0.13" rpy="0 -1.5708 1.5708"/>	  <!-- L BRACKET DIMENIONS -->
+    <origin xyz="0.0 0.05 0.13" rpy="0 -1.5708 1.5708"/>	  <!-- L BRACKET DIMENIONS -->
   </joint>
 
   <!-- SHOULDER MOTOR: Thickness: X5 = 31.1mm, X8 = 45.1mm -->

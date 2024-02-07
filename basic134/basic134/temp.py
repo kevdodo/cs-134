@@ -74,6 +74,7 @@ class DemoNode(Node):
         self.hold = False
         self.detected = True
         self.go = False
+        self.hold_point = False
 
         # This is to get point coordinates
         self.fbksub = self.create_subscription(
@@ -96,8 +97,8 @@ class DemoNode(Node):
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         self.start_time = sec + nano*10**(-9)
 
-        self.gammaFactor = 0.0
-        self.lamFactor = 0.0
+        self.gam = 0.0
+        self.lam = 0.0
        
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
@@ -178,7 +179,16 @@ class DemoNode(Node):
         self.t = now - self.start_time
 
         if not self.hold and not self.go:
-            if self.t >= GO_TO_START_T:
+            if self.hold_point:
+                if self.t > 5:
+                    self.hold_point = False
+                    self.start_time = now
+                    self.t = now - self.start_time
+                    self.joint_to_return_from = self.q
+                    self.vel_to_return_from = self.qdot
+
+                q, qdot = self.q, self.qdot
+            elif self.t >= GO_TO_START_T:
                 # Enter hold
                 self.go = False
                 self.hold = True
@@ -202,9 +212,12 @@ class DemoNode(Node):
                 self.vel_to_return_from = self.actualJointVel
                 self.coords_from, _, _, _ = self.chain.fkin(self.actualJointPos)
 
+                self.q = np.array(self.actualJointPos).reshape((3, 1))
+                (self.pd, _, _, _) = self.chain.fkin(self.q)
+                
             else:
                 # Hold
-                q, qdot = self.start_to_idle(GO_TO_START_T, GO_TO_START_T)
+                q, qdot = self.start_to_idle(GO_TO_START_T,  GO_TO_START_T)
                 self.hold = True
                 self.go = False
             self.start_time = now
@@ -212,37 +225,52 @@ class DemoNode(Node):
 
         if self.go and not self.hold:
             if self.t >= GO_TO_POINT_T:
-
                 self.hold = False
                 self.go = False
                 self.start_time = now
-                self.t = now - self.start_time                
-                q = self.q
-                qdot = self.qdot
+                self.t = now - self.start_time
 
                 self.joint_to_return_from = self.actualJointPos
                 self.vel_to_return_from = self.actualJointVel
-                # tplot = np.arange(0, GO_TO_START_T, .1)
-                # plt.plot(tplot, spline5(tplot, GO_TO_START_T, np.array(self.q).reshape(3,1), 
-                #                 self.idleJointPos.reshape(3,1), np.zeros((3, 1)), 
-                #                 np.zeros((3, 1)), np.zeros((3, 1)), np.zeros((3, 1))))
-                # plt.show()
-                # exit()
-            else:
-                p, v = self.go_to_coords(self.t, GO_TO_POINT_T, self.gox, self.goy, self.goz)
-                (p_actual, r, Jv, Jw) = self.chain.fkin(self.q)
-                e = ep(p_actual, p)
-                gamma = self.gammaFactor
-                Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + gamma**2 * np.eye(3))
+                self.hold_point = True
 
-                qdot = Jinv @ (v + self.lamFactor * e)
-                q = self.q + self.qdot*dt
+                q = self.q
+                qdot = self.qdot
+            else:
+                # Compute desired trajectory
+                pd, vd = self.go_to_coords(self.t, GO_TO_POINT_T, self.gox, self.goy, self.goz)
+
+                # Grab the last joint value and desired orientation.
+                qlast  = self.q
+                pdlast = self.pd
+
+                # Compute the old forward kinematics.
+                (p, R, Jv, Jw) = self.chain.fkin(qlast)
+
+                # Set up the inverse kinematics.
+                vr    = vd + self.lam * ep(pdlast, p)
+                Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + self.gam**2 * np.eye(3))
+                qdot = Jinv @ vr
+                q = qlast + dt * qdot
+
+                self.pd = pd
+
+                # (p_actual, r, Jv, Jw) = self.chain.fkin(self.q)
+                # error = ep(p_actual, p)
+                # print(error)
+                # gamma = self.gammaFactor
+                # Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + gamma**2 * np.eye(3))
+
+                # qdot = Jinv @ (v + self.lamFactor * error)
+                # q = self.q + self.qdot*dt
+
+
         # print(np.array(self.actualJointPos).shape,  np.array(q).shape)
         if self.collision_detection(q, qdot) and not self.detected:
-            # print("wuttt")
             self.detected = True
             self.go = False
             self.hold = False
+            self.hold_point = True
             self.joint_to_return_from = self.actualJointPos 
             self.vel_to_return_from = self.actualJointVel
 
@@ -261,7 +289,6 @@ class DemoNode(Node):
         # x_dot = J qdot
                 # .23646962 * np.cos(q[1, 0])
         e = np.array([0.0, 1.60541142 * np.cos(self.actualJointPos[1]), 0.0])
-        self.q = q
 
         self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
         self.cmdmsg.name         = self.jointnames()
@@ -272,6 +299,9 @@ class DemoNode(Node):
         self.q = q
         self.qdot = qdot
         self.effort = e
+
+        # Save the joint value and desired values for next cycle.
+        self.q  = q
         # Order 0-2: 3.3 Base, 3.5 shoulder, 3.4 Wrist
 
         
