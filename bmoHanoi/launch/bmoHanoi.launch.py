@@ -1,10 +1,5 @@
-"""Launch the depth camera node (only)
-
-This launch file is intended show how the pieces come together.
-Please copy the relevant pieces.
-
-"""
-
+# Copy of the realsense align launch file used to attempt to subscribe to all 
+# needed nodes.
 import os
 import xacro
 
@@ -37,13 +32,20 @@ def generate_launch_description():
               'enable_infra1':           'false',   # enable infra1 stream
               'enable_infra2':           'false',   # enable infra2 stream
               'enable_depth':            'true',    # enable depth stream
-              'align_depth.enable':      'false',   # enabled aligned depth
+              'align_depth.enable':      'true',    # enabled aligned depth
               'pointcloud.enable':       'false',   # Turn on point cloud
               'allow_no_texture_points': 'true'}    # All points without texture
-    print("where is dude\n", rsfile)
+
     incl_realsense = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rsfile),
         launch_arguments=rsargs.items())
+    
+    node_camera = Node(
+        name       = 'eyes', 
+        package    = 'bmoHanoi',
+        executable = 'bmoHanoi',
+        output     = 'screen'
+        )
 
 
     ######################################################################
@@ -54,4 +56,5 @@ def generate_launch_description():
 
         # Start the nodes.
         incl_realsense,
+        node_camera,
     ])
