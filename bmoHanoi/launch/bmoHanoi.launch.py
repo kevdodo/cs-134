@@ -46,7 +46,16 @@ def generate_launch_description():
         executable = 'bmoHanoi',
         output     = 'screen'
         )
-
+    
+    node_hebi = Node(
+        name       = 'hebi', 
+        package    = 'hebiros',
+        executable = 'hebinode',
+        output     = 'screen',
+        parameters = [{'family':   'robotlab'},
+                      {'motors':   ['3.6',  '1.7',      '3.5',   '3.4',   '3.3']},
+                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head']}],
+        on_exit    = Shutdown())
 
     ######################################################################
     # COMBINE THE ELEMENTS INTO ONE LIST
@@ -56,5 +65,6 @@ def generate_launch_description():
 
         # Start the nodes.
         incl_realsense,
+        node_hebi,
         node_camera,
     ])
