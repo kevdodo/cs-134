@@ -96,8 +96,8 @@ class BmoHanoi(Node):
 
         self.testArr = np.array([
             list(self.idlePosition[:, 0]),
-            [.5, .25, .5], 
-            [.5, .25, .5]
+            [.60, .40, .10], 
+            [.60, .40, .10]
         ])
         # self.testArr = np.array([np.radians(x) for x in self.testArr])
         self.test_idx = -1
@@ -196,10 +196,10 @@ class BmoHanoi(Node):
 
     def goto_idle(self, t):
         if t < GO_TO_SHOULDER:
-            desired = self.jointPos0[:]
+            desired = self.jointPos0[:5]
             desired[1] = 0.0
 
-            q, qdot = spline(t, GO_TO_SHOULDER, np.array(self.jointPos0).reshape(self.qshape), 
+            q, qdot = spline(t, GO_TO_SHOULDER, np.array(self.jointPos0[:5]).reshape(self.qshape), 
                     np.array(desired).reshape(self.qshape), 
                     np.zeros(self.qshape), 
                     np.zeros(self.qshape))
@@ -294,7 +294,7 @@ class BmoHanoi(Node):
         # pd[2] = np.nan
         # vd[2] = np.nan
         self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
-        self.cmdmsg.name         = self.jointnames()
+        self.cmdmsg.name         = self.jointnames()[:5]
         self.cmdmsg.position     = q #[np.nan, np.nan, np.nan, np.nan, np.nan] 
         self.cmdmsg.velocity     = qdot #[np.nan, np.nan, np.nan, np.nan, np.nan]#
         self.cmdmsg.effort       = [np.nan, np.nan, motor35eff, np.nan, np.nan]

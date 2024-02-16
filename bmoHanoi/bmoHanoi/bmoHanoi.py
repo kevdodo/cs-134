@@ -8,15 +8,15 @@ import cv_bridge
 from rclpy.node         import Node
 from sensor_msgs.msg    import Image, JointState
 
-
+from bmoHanoi.process_color_depth import rgb_process, depth_process
 from bmoHanoi.TrajectoryUtils import *
 from bmoHanoi.TransformHelpers import *
 
 RATE = 100
-GO_TO_SHOULDER = 10
-GO_TO_IDLE     = 10
-TIME_TEST = 20
-GO_TO_POINT = 10
+GOTO_REC_T = 10
+REC_T = 10
+GOTO_PRI_T = 10
+GRAB_T = 10
 
 COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                  'green': [(40, 80), (55, 220), (35, 175)],
@@ -24,91 +24,97 @@ COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                    'orange': [(0, 15), (80, 255), (146, 255)],
                     'red': [(0,5), (160, 255), (70, 230)] 
                     }
+import cv2
+import numpy as np
+
+# ROS Imports
+import rclpy
+import cv_bridge
+
+from rclpy.node         import Node
+from sensor_msgs.msg    import Image, JointState
+
+
+from bmoHanoi.TrajectoryUtils import *
+from bmoHanoi.TransformHelpers import *
+from bmoHanoi.KinematicChain import *
 
 class BmoHanoi(Node):
     # Initialization.
     def __init__(self, name):
         # Initialize the node, naming it as specified
         super().__init__(name)
-        self.jointPos0 = self.grabfbk()
-        self.actualJointPos   = self.jointPos0
+        self.chain = KinematicChain('world', 'tip', self.jointnames()[:5])
+        self.T = 0
+        # Create a timer to keep calculating/sending commands.
+        rate       = RATE
+        self.t = 0.0
+        self.dt = 0.0
+        sec, nano = self.get_clock().now().seconds_nanoseconds()
+        self.start_time = sec + nano*10**(-9)
+
+        self.prSt = 'GOTO_REC'
+        self.nxSt = 'GRAB'
+        self.priorityDonut = None
+
+        self.actualJointPos   = self.grabfbk()
         self.actualJointVel   = None
         self.actualJointEff   = None
-        self.starting = True
-        # Thresholds in Hmin/max, Smin/max, Vmin/max
-        self.hsvlimits = np.array([[20, 30], [90, 170], [60, 255]])
+
+        self.q = self.actualJointPos[:5]
+
+        self.taskShape = (5, 1)
+
+        self.recon_joint = np.array([0.0, -.27, -1.47, -.15 + .58, 0.0]).reshape(self.taskShape)
+        self.taskPosition0, self.taskOrientation0, _, _ = self.chain.fkin(self.q)
+
+        self.pd = self.taskPosition0[:]
+        self.vd = np.zeros((3, 1))
+        self.rd = self.taskOrientation0
+        self.wd = np.zeros((2, 1))
+
+        self.hsvlimits = np.array(COLOR_HSV_MAP['orange'])
 
 
+
+        self.gam = .1
+        self.lam = 10.0
+
+        start = np.zeros(self.taskShape)
+        start[2] = np.radians(45.0)
+
+        self.reconPos, self.reconOr, _, _ = self.chain.fkin(self.recon_joint)
         # Set up the OpenCV bridge.
         self.bridge = cv_bridge.CvBridge()
-
         self.pubrgb = self.create_publisher(Image, '/camera/color/display_image', 3)
-
         # Create Subscribers for image
         self.sub_rgb = self.create_subscription(Image, '/camera/color/image_raw', 
                                                 self.rgb_process, 1)
         self.sub_depth = self.create_subscription(Image, '/camera/aligned_depth_to_color/image_raw',
                                                 self.depth_process, 1)
-        
         self.cmdpub = self.create_publisher(JointState, '/joint_commands', 10)
-
         # Wait for a connection to happen.  This isn't necessary, but
         # means we don't start until the rest of the system is ready.
         self.get_logger().info("Waiting for a /joint_commands subscriber...")
         while(not self.count_subscribers('/joint_commands')):
             pass
-
         # Create a subscriber to continually receive joint state messages.
         self.fbksub = self.create_subscription(
             JointState, '/joint_states', self.recvfbk, 10)
-
-
-        # Create a timer to keep calculating/sending commands.
-        rate       = RATE
-        self.t = 0.0
-        sec, nano = self.get_clock().now().seconds_nanoseconds()
-        self.start_time = sec + nano*10**(-9)
-
-        # Create a timer to keep calculating/sending commands.
-        self.qshape = (5, 1)
-
-        self.zeros = np.array([0.0, 0.0, 0.0, 0.0, 0.0]).reshape(self.qshape)
-        self.jointVel0 = self.zeros
-        self.init_joints = False
+        self.pubbin = self.create_publisher(Image, name+'/binary',    3)
 
         self.cmdmsg = JointState()
 
-        # Report.
-        self.centerColor = [0,0,0]
-        self.centerDist = 0
         self.timer = self.create_timer(1/rate, self.sendCmd)
         self.get_logger().info("Sending commands with dt of %f seconds (%fHz)" %
                                (self.timer.timer_period_ns * 1e-9, rate))
-
-        self.testArr = np.array([
-            [0.0, 0.0],
-            [90.0, 0.0],
-            [90.0, 0.0],
-            [0.0,   0.0],
-            [25.0,   0.0],
-            [25.0, -30.0],
-            [25.0, -60.0],
-            [25.0, -90.0],
-            [25.0, -60.0],
-            [25.0, -30.0],
-            [40.0,   0.0],
-            [45.0, -30.0],
-            [34.0, -45.0],
-        ])
-        self.testArr = np.array([np.radians(x) for x in self.testArr])
-        self.test_idx = -1
-        self.positionCmds = []
-        self.actualPos = []
-        self.actEff = []
+        
+        self.hsvImage = None                   
+        self.depthImage = None             
 
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
-        return ['base', 'shoulder', 'elbow', 'wrist', 'head']
+        return ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']
 
     # Shutdown
     def shutdown(self):
@@ -139,15 +145,13 @@ class BmoHanoi(Node):
     def depth_process(self, msg):
         # Confirm the encoding and report.
         assert(msg.encoding == "16UC1")
-        # self.get_logger().info(
-        #     "Image %dx%d, bytes/pixel %d, encoding %s" %
-        #     (msg.width, msg.height, msg.step/msg.width, msg.encoding))
 
         # Extract the depth image information (distance in mm as uint16).
         width  = msg.width
         height = msg.height
         depth  = np.frombuffer(msg.data, np.uint16).reshape(height, width)
 
+        self.depthImage = depth
         # Report.
         col = width//2
         row = height//2
@@ -157,15 +161,23 @@ class BmoHanoi(Node):
     def rgb_process(self, msg):
         # Confirm the encoding and report.
         assert(msg.encoding == "rgb8")
+        # self.get_logger().info(
+        #     "Image %dx%d, bytes/pixel %d, encoding %s" %
+        #     (msg.width, msg.height, msg.step/msg.width, msg.encoding))
 
         # Convert into OpenCV image, using RGB 8-bit (pass-through).
         frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
+        # Update the HSV limits (updating the control window).
+
         # Convert to HSV
         hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+        # hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)  # Cheat: swap red/blue
 
         # Threshold in Hmin/max, Smin/max, Vmin/max
         binary = cv2.inRange(hsv, self.hsvlimits[:,0], self.hsvlimits[:,1])
+
+        self.hsvImage = binary
 
         # Grab the image shape, determine the center pixel.
         (H, W, D) = frame.shape
@@ -176,63 +188,215 @@ class BmoHanoi(Node):
         frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
         frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
 
-        self.centerColor = hsv[vc, uc]
+        # Report the center HSV values.  Note the row comes first.
+        self.get_logger().info(
+            "Center pixel HSV = (%3d, %3d, %3d)" % tuple(hsv[vc, uc]))
 
         # Convert the frame back into a ROS image and republish.
         self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))
 
-
-    def performTest(self, t):
-
-        q, qDot = spline(t, TIME_TEST, np.array(self.jointPos0).reshape(self.qshape), 
-                self.idleJointPos.reshape(self.qshape), 
-                np.array(self.jointVel0, dtype=float).reshape(self.qshape), 
-                np.zeros(self.qshape, dtype=float))
-        return q, qDot
+        # Also publish the thresholded binary (black/white) image.
+        self.pubbin.publish(self.bridge.cv2_to_imgmsg(binary))
     
     def saveFdbck(self,pd):
         self.positionCmds.append(pd)
         self.actualPos.append(self.actualJointPos)
-        self.actEff.append(self.actualJointEff)        
+        self.actEff.append(self.actualJointEff)   
+    
+    def setT(self):
+        match self.prSt:
+            case 'GOTO_REC':
+                self.T = GOTO_REC_T
+            case 'REC':
+                self.T = REC_T
+            case 'GOTO_PRI':
+                self.T = GOTO_PRI_T
+            case 'GRAB':
+                self.T = GRAB_T  
+    def updateTime(self):
+        if self.prSt != self.nxSt:
+            sec, nano = self.get_clock().now().seconds_nanoseconds()
+            self.t = 0.0
+            self.dt = 0.0
+            self.start_time = sec + nano*10**(-9)
+        elif self.t < self.T:
+            sec, nano = self.get_clock().now().seconds_nanoseconds()
+            now = sec + nano*10**(-9)
+            self.dt = (now - self.start_time) - self.t
+            self.t = now - self.start_time
+    
+    def updateNextState(self):
+        if (self.t < self.T):
+            self.nxSt = self.prSt
+        else:
+          match self.prSt:
+            case 'GOTO_REC':
+                self.nxSt = 'REC'
+            case 'REC':
+                # self.get_logger().info(f"priority {(self.priorityDonut)}")
 
-    def sendCmd(self):
-        pass
-    #     sec, nano = self.get_clock().now().seconds_nanoseconds()
-    #     now = sec + nano*10**(-9)
-    #     dt = (now - self.start_time) -self.t
-    #     self.t = now - self.start_time
+                if self.priorityDonut is not None:
+                  self.nxSt = 'GOTO_PRI'
+                else:
+                  self.nxSt = 'REC'
+                # self.get_logger().info(f"nx {(self.nxSt)}")
+            case 'GOTO_PRI':
+                self.nxSt = 'GOTO_REC'
+            case 'GRAB':
+                self.nxSt = 'GOTO_REC'
+          self.taskPosition0 = self.pd[:]
 
-    #     if (self.t < GO_TO_SHOULDER + GO_TO_IDLE) and self.starting:
-    #         pd, vd = self.goto_idle(self.t)
-    #     else:
-    #         if self.starting or self.t > GO_TO_POINT:
-    #             self.starting = False
-    #             sec, nano = self.get_clock().now().seconds_nanoseconds()
-    #             self.start_time = sec + nano*10**(-9)
-    #             self.t = 0.0
-    #             self.test_idx += 1
-    #         pd, vd = self.start_test(self.t)
-    #         if pd == None:
-    #             self.get_logger().info(f"Shapes {np.array(self.actEff).shape}, {np.array(self.positionCmds).shape}, "
-    #                                  f"{np.array(self.actualPos).shape}")
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/pos_cmds', np.array(self.positionCmds))
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/act_pos', np.array(self.actualPos))
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/act_eff', np.array(self.actEff))
-    #             return None
+    def updateState(self):
+        self.prSt = self.nxSt
+        # self.get_logger().info(f"state {(self.prSt)}")
+
+
+    def gotoRec(self):
+        task_shape =(3, 1)
+        pd, vd = spline(self.t, self.T, self.taskPosition0, self.reconPos, 
+                       np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+
+        return pd, vd
+
+    def average_index_of_ones(self, arr):
+        # Get the indices of 1's
+        indices = np.argwhere(arr)
+        # self.get_logger().info(f"indices {indices[:, 0]}")
+
+        # Calculate the average index for x and y separately
+        avg_index_x = int(np.average(indices[:, 0]))
+        avg_index_y = int(np.average(indices[:, 1]))
+        # self.get_logger().info(f"mid pixel {(avg_index_x, avg_index_y)}")
+        # self.get_logger().info(f"shape {(arr.shape)}")
+
+        return avg_index_x, avg_index_y
+    
+    def get_theta(self):
+        rows, cols = self.hsvImage.shape
+
+        donut_x, donut_y = self.average_index_of_ones(self.hsvImage)
+        x_coord = donut_x - rows // 2
+        y_coord = donut_y - cols // 2
+        theta = np.tan(x_coord / y_coord)
+        return theta
+    
+    def ir_dist(self, x, y):
+        distance = (self.depthImage[x, y] / 1000)
+        # self.get_logger().info(f"ir distance {distance}")
+        return distance
+    
+    def get_table_distance(self):
+        _, _, z = self.pd[:, 0]
+        donut_x, donut_y = self.average_index_of_ones(self.hsvImage)
+        # self.get_logger().info(f"z val {z}")
+
+        return np.sqrt( self.ir_dist( donut_x, donut_y)**2 - z**2)
+
+    # must be cyclic
+    def recon(self):
+        task_shape =(3, 1)
+        pd, vd = spline(1, 1, self.reconPos, self.reconPos, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+        if len(np.flatnonzero(self.hsvImage)) > 50:
+            theta = self.get_theta()
+            d = self.get_table_distance()
+            x, y, z = self.pd[:, 0]
+            # self.get_logger().info(f"d {d}")
+            self.get_logger().info(f"theta {np.degrees(theta)}")
+
+        self.priorityDonut = np.array([.20, .30, .05])
+        # self.get_logger().info(f"donutt {self.priorityDonut}")
+
+        return pd, vd
             
-        
-    #     motor35eff = 7.1 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
-    #     motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
-    #     pd[1] = pd[1] + motor17offset
+    
+    def gotoPri(self):
+        task_shape =(3, 1)
+        # self.get_logger().info(f"t {(self.t)}")
+        pd, vd = spline(self.t, self.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+        return pd, vd
+    
+    def grab(self):
+       pass
 
-    #     # pd[2] = np.nan
-    #     # vd[2] = np.nan
-    #     self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
-    #     self.cmdmsg.name         = self.jointnames()
-    #     self.cmdmsg.position     = pd #[np.nan, np.nan, np.nan, np.nan, np.nan] 
-    #     self.cmdmsg.velocity     = vd #[np.nan, np.nan, np.nan, np.nan, np.nan]#
-    #     self.cmdmsg.effort       = [np.nan, np.nan, motor35eff, np.nan, np.nan]
-    #     self.cmdpub.publish(self.cmdmsg)
+    def executeState(self):
+       match self.prSt:
+            case 'GOTO_REC':
+              return self.gotoRec()
+            case 'REC':
+              return self.recon()
+            case 'GOTO_PRI':
+              return self.gotoPri()
+            case 'GRAB':
+              return self.grab()
+
+    
+    def sendCmd(self):
+        self.get_logger().info(f"T {self.T}")
+        self.get_logger().info(f"t {self.t}")
+
+        self.setT()
+        pd, vd = self.executeState()
+        self.get_logger().info(f"nxt {self.nxSt}")
+        self.updateNextState()
+        self.updateTime()
+        self.get_logger().info(f"t after {self.t}")
+
+        self.updateState()
+
+        # self.get_logger().info(f"q {(self.q)}")
+        # self.get_logger().info(f"T {self.T}")
+        # self.get_logger().info(f"t {self.t}")
+
+
+
+
+        qlast  = np.array(self.q).reshape(self.taskShape)
+        pdlast = self.pd
+
+        # # Compute the old forward kinematics.
+        (p, R, Jv, Jw) = self.chain.fkin(qlast)
+        # # Set up the inverse kinematics.
+        vr    = vd + self.lam * ep(pdlast, p)
+        # Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + self.gam**2 * np.eye(3))
+        # qdot = Jinv @ vr
+
+        
+        lams  = 10.0
+        qc    = self.recon_joint#np.radians(np.array([0.0,45,-90.0,-45.0, 0.0]).reshape((5,1)))
+        qsdot = lams * (qc - qlast)
+        xrdot = vr
+        Jinv  = Jv.T @ np.linalg.pinv(Jv @ Jv.T + self.gam**2 * np.eye(3))
+        qdot  = Jinv @ xrdot + qsdot - Jinv @ (Jv @ qsdot)
+        q = qlast + self.dt * qdot
+
+        q, qdot = list(q[:, 0]), list(qdot[:, 0])
+
+
+        self.pd = pd
+        self.q = q[:]
+        motor35eff = 7.1 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        q[1] = q[1] + motor17offset
+
+
+        q.append(0.0)
+        qdot.append(0.0)
+
+        # self.get_logger().info(f"q: {q}")
+        # self.get_logger().info(f"p: {pd}")
+        # self.get_logger().info(f"t: {self.t}")
+        # self.get_logger().info(f"dt: {self.dt}")
+        # self.get_logger().info(f"T: {self.T}")
+
+        self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
+        self.cmdmsg.name         = self.jointnames()
+        self.cmdmsg.position     = q #[np.nan, np.nan, np.nan, np.nan, np.nan] 
+        self.cmdmsg.velocity     = qdot #[np.nan, np.nan, np.nan, np.nan, np.nan]#
+        self.cmdmsg.effort       = [np.nan, np.nan, motor35eff, np.nan, np.nan, np.nan]
+        self.cmdpub.publish(self.cmdmsg)
 
 #   Main Code
 #

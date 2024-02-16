@@ -19,7 +19,8 @@ from launch                            import LaunchDescription
 from launch.actions                    import Shutdown
 from launch_ros.actions                import Node
 
-
+from launch.actions                    import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 #
 # Generate the Launch Description
 #
@@ -37,7 +38,23 @@ def generate_launch_description():
     with open(urdf, 'r') as file:
         robot_description = file.read()
 
+    rsfile = os.path.join(pkgdir('realsense2_camera'), 'launch/rs_launch.py')
 
+    # Profile is Width x Height x FPS.  0 is default.
+    rsargs = {'camera_name':             'camera',  # camera unique name
+              'depth_module.profile':    '0,0,0',   # depth W, H, FPS
+              'rgb_camera.profile':      '0,0,0',   # color W, H, FPS
+              'enable_color':            'true',    # enable color stream
+              'enable_infra1':           'false',   # enable infra1 stream
+              'enable_infra2':           'false',   # enable infra2 stream
+              'enable_depth':            'true',    # enable depth stream
+              'align_depth.enable':      'true',    # enabled aligned depth
+              'pointcloud.enable':       'false',   # Turn on point cloud
+              'allow_no_texture_points': 'true'}    # All points without texture
+
+    incl_realsense = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(rsfile),
+        launch_arguments=rsargs.items())
     ######################################################################
     # PREPARE THE LAUNCH ELEMENTS
 
@@ -85,8 +102,8 @@ def generate_launch_description():
         executable = 'hebinode',
         output     = 'screen',
         parameters = [{'family':   'robotlab'},
-                      {'motors':   ['3.6',  '1.7',        '3.5',   '3.4', '3.3']},
-                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head']}],
+                      {'motors':   ['3.6',  '1.7',        '3.5',   '3.4', '3.3', '3.1']},
+                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']}],
         on_exit    = Shutdown())
 
 
@@ -94,7 +111,7 @@ def generate_launch_description():
     node_demo = Node(
         name       = 'go', 
         package    = 'bmoHanoi',
-        executable = 'bmosFirstMove',
+        executable = 'bmoHanoi',
         output     = 'screen')
 
     # Configure a node for the GUI to command the robot.
@@ -141,4 +158,5 @@ def generate_launch_description():
         node_rviz,
         node_hebi,
         node_demo,
+        incl_realsense
     ])

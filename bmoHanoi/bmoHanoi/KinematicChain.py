@@ -137,6 +137,7 @@ class KinematicChain():
         # Create a temporary subscriber to receive the URDF.  We use
         # the TRANSIENT_LOCAL durability, so that we see the last
         # message already published (if any).
+        print(expectedjointnames)
         self.info("Waiting for the URDF to be published...")
         self.urdf = None
         def cb(msg):

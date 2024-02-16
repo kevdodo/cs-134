@@ -54,6 +54,13 @@
 
   <link name="camera"/>
 
+  <joint name="claw" type="continuous">
+    <parent link="hand"/>
+    <child  link="camera"/>
+    <origin xyz="-.0975 0 -.045" rpy="0 0 0"/>
+    <axis   xyz="0 0 -1"/>
+  </joint>
+
   <joint name="final" type="fixed">
     <parent link="camera"/>
     <child  link="tip"/>
@@ -61,6 +68,14 @@
   </joint>
 
   <link name="tip"/>
+
+  <joint name="gripper" type="fixed">
+    <parent link="tip"/>
+    <child  link="donut"/>
+    <origin xyz=".035 .095 -0.08" rpy="0 0 0"/>
+  </joint>
+
+  <link name="donut"/>
 
 
   <!-- *************************************************** -->
