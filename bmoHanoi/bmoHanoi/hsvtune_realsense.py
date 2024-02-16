@@ -18,7 +18,6 @@ import cv_bridge
 from rclpy.node         import Node
 from sensor_msgs.msg    import Image
 
-
 #
 #  Use Trackbars to Vary HSV Limits
 #
@@ -79,12 +78,19 @@ class HSVTuneNode(Node):
         # Thresholds in Hmin/max, Smin/max, Vmin/max
         self.hsvlimits = np.array([[20, 30], [90, 170], [60, 255]])
 
-        # Create trackbars to vary the thresholds.
+        # Create trackbars to vary the tshresholds.
         self.tracker = HSVTracker(self.hsvlimits)
         self.get_logger().info("Allowing HSV limits to vary...")
 
         # Create a publisher for the processed (debugging) images.
         # Store up to three images, just in case.
+        
+        self.pubrgb = self.create_publisher(Image, '/camera/color/display_image', 3)
+
+        # Create Subscribers for image
+        self.sub_rgb = self.create_subscription(Image, '/camera/color/image_raw', 
+                                                self.process, 1)
+        
         self.pubrgb = self.create_publisher(Image, name+'/image_raw', 3)
         self.pubbin = self.create_publisher(Image, name+'/binary',    3)
 
@@ -104,7 +110,34 @@ class HSVTuneNode(Node):
     def shutdown(self):
         # No particular cleanup, just shut down the node.
         self.destroy_node()
+        
 
+    # def rgb_process(self, msg):
+    #     # Confirm the encoding and report.
+    #     assert(msg.encoding == "rgb8")
+
+    #     # Convert into OpenCV image, using RGB 8-bit (pass-through).
+    #     frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
+
+    #     # Convert to HSV
+    #     hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+
+    #     # Threshold in Hmin/max, Smin/max, Vmin/max
+    #     binary = cv2.inRange(hsv, self.hsvlimits[:,0], self.hsvlimits[:,1])
+
+    #     # Grab the image shape, determine the center pixel.
+    #     (H, W, D) = frame.shape
+    #     uc = W//2
+    #     vc = H//2
+
+    #     # Draw the center lines.  Note the row is the first dimension.
+    #     frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
+    #     frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
+
+    #     self.centerColor = hsv[vc, uc]
+
+    #     # Convert the frame back into a ROS image and republish.
+    #     self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))
 
     # Process the image (detect the ball).
     def process(self, msg):

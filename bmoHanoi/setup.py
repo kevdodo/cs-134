@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/rviz',   glob('rviz/*')),
         ('share/' + package_name + '/launch', glob('launch/*')),
+        ('share/' + package_name + '/urdf',   glob('urdf/*'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -23,7 +24,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'bmoHanoi       = bmoHanoi.bmoHanoi:main'
+            'bmoHanoi                = bmoHanoi.bmoHanoi:main',
+            'hsvtune_realsense       = bmoHanoi.hsvtune_realsense:main',
+            'bmosFirstMove           = bmoHanoi.bmosFirstMove:main'
         ],
     },
 )

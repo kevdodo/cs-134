@@ -11,19 +11,13 @@ from sensor_msgs.msg    import Image, JointState
 
 from bmoHanoi.TrajectoryUtils import *
 from bmoHanoi.TransformHelpers import *
+from bmoHanoi.KinematicChain import *
 
 RATE = 100
-GO_TO_SHOULDER = 10
-GO_TO_IDLE     = 10
+GO_TO_SHOULDER = 5
+GO_TO_IDLE     = 5
 TIME_TEST = 20
-GO_TO_POINT = 10
-
-COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
-                 'green': [(40, 80), (55, 220), (35, 175)],
-                  'yellow': [(15, 55), (65, 255), (150, 255)],
-                   'orange': [(0, 15), (80, 255), (146, 255)],
-                    'red': [(0,5), (160, 255), (70, 230)] 
-                    }
+GO_TO_POINT = 5
 
 class BmoHanoi(Node):
     # Initialization.
@@ -32,12 +26,17 @@ class BmoHanoi(Node):
         super().__init__(name)
         self.jointPos0 = self.grabfbk()
         self.actualJointPos   = self.jointPos0
+        self.q = self.actualJointPos
+
         self.actualJointVel   = None
         self.actualJointEff   = None
         self.starting = True
         # Thresholds in Hmin/max, Smin/max, Vmin/max
         self.hsvlimits = np.array([[20, 30], [90, 170], [60, 255]])
+        self.qshape = (5, 1)
 
+        self.gam = 0.01
+        self.lam = 10
 
         # Set up the OpenCV bridge.
         self.bridge = cv_bridge.CvBridge()
@@ -69,11 +68,21 @@ class BmoHanoi(Node):
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         self.start_time = sec + nano*10**(-9)
 
+
+        self.chain = KinematicChain('world', 'tip', self.jointnames())
+        # self.idleJointPos = np.radians([0,70,180])._jreshape((3,1))
+        desired = np.zeros(self.qshape)
+        desired[2] = np.radians(-90.0)
+        desired[3] = np.radians(-90.0)
+        self.idlePosition, _, _, _ = self.chain.fkin(desired)
+        self.pd = self.idlePosition
+        # self.coords_from, _, _, _ = self.chain.fkin(self.actualJointPos)
+
         # Create a timer to keep calculating/sending commands.
-        self.qshape = (5, 1)
 
         self.zeros = np.array([0.0, 0.0, 0.0, 0.0, 0.0]).reshape(self.qshape)
         self.jointVel0 = self.zeros
+        print(self.jointVel0)
         self.init_joints = False
 
         self.cmdmsg = JointState()
@@ -86,21 +95,11 @@ class BmoHanoi(Node):
                                (self.timer.timer_period_ns * 1e-9, rate))
 
         self.testArr = np.array([
-            [0.0, 0.0],
-            [90.0, 0.0],
-            [90.0, 0.0],
-            [0.0,   0.0],
-            [25.0,   0.0],
-            [25.0, -30.0],
-            [25.0, -60.0],
-            [25.0, -90.0],
-            [25.0, -60.0],
-            [25.0, -30.0],
-            [40.0,   0.0],
-            [45.0, -30.0],
-            [34.0, -45.0],
+            list(self.idlePosition[:, 0]),
+            [.5, .25, .5], 
+            [.5, .25, .5]
         ])
-        self.testArr = np.array([np.radians(x) for x in self.testArr])
+        # self.testArr = np.array([np.radians(x) for x in self.testArr])
         self.test_idx = -1
         self.positionCmds = []
         self.actualPos = []
@@ -193,46 +192,113 @@ class BmoHanoi(Node):
     def saveFdbck(self,pd):
         self.positionCmds.append(pd)
         self.actualPos.append(self.actualJointPos)
-        self.actEff.append(self.actualJointEff)        
+        self.actEff.append(self.actualJointEff)     
 
-    def sendCmd(self):
-        pass
-    #     sec, nano = self.get_clock().now().seconds_nanoseconds()
-    #     now = sec + nano*10**(-9)
-    #     dt = (now - self.start_time) -self.t
-    #     self.t = now - self.start_time
+    def goto_idle(self, t):
+        if t < GO_TO_SHOULDER:
+            desired = self.jointPos0[:]
+            desired[1] = 0.0
 
-    #     if (self.t < GO_TO_SHOULDER + GO_TO_IDLE) and self.starting:
-    #         pd, vd = self.goto_idle(self.t)
-    #     else:
-    #         if self.starting or self.t > GO_TO_POINT:
-    #             self.starting = False
-    #             sec, nano = self.get_clock().now().seconds_nanoseconds()
-    #             self.start_time = sec + nano*10**(-9)
-    #             self.t = 0.0
-    #             self.test_idx += 1
-    #         pd, vd = self.start_test(self.t)
-    #         if pd == None:
-    #             self.get_logger().info(f"Shapes {np.array(self.actEff).shape}, {np.array(self.positionCmds).shape}, "
-    #                                  f"{np.array(self.actualPos).shape}")
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/pos_cmds', np.array(self.positionCmds))
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/act_pos', np.array(self.actualPos))
-    #             np.save(r'/home/robot/robotws/src/cs-134/bmoHanoi/bmoHanoi/act_eff', np.array(self.actEff))
-    #             return None
-            
+            q, qdot = spline(t, GO_TO_SHOULDER, np.array(self.jointPos0).reshape(self.qshape), 
+                    np.array(desired).reshape(self.qshape), 
+                    np.zeros(self.qshape), 
+                    np.zeros(self.qshape))
+            self.newJoint0 =  q
+        else:
+            desired = np.zeros(self.qshape)
+            desired[2] = np.radians(-90.0)
+            desired[3] = np.radians(-90.0)
+            q, qdot = spline(t - GO_TO_SHOULDER, GO_TO_IDLE, 
+                    np.array(self.newJoint0).reshape(self.qshape), 
+                    np.array(desired).reshape(self.qshape), 
+                    np.zeros(self.qshape), 
+                    np.zeros(self.qshape)) 
+            # self.endIdlePos, _, _, _ = self.chain.fkin(self.actualJointPos)
+            # if len(self.testArr) < 14:
+            #     self.testArr = np.vstack([[desired[1, 0], desired[2, 0]], self.testArr])
+        return list(q[:, 0]), list(qdot[:, 0])
+
+    def start_test(self, t, dt):
+        if self.test_idx < len(self.testArr)-1:
+
+            start = self.testArr[self.test_idx]
+            self.get_logger().info(f"start {start}")
+
+            end = self.testArr[self.test_idx+1]
+
+            task_shape = (3, 1)
+
+
+            pd, vd = spline(t, GO_TO_POINT, np.array(start).reshape(task_shape), 
+                    np.array(end).reshape(task_shape), 
+                    np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
         
-    #     motor35eff = 7.1 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
-    #     motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
-    #     pd[1] = pd[1] + motor17offset
+            # self.get_logger().info(f"pd {pd}")
+                # Grab the last joint value and desired orientation.
+            qlast  = np.array(self.q).reshape(self.qshape)
+            pdlast = self.pd
 
-    #     # pd[2] = np.nan
-    #     # vd[2] = np.nan
-    #     self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
-    #     self.cmdmsg.name         = self.jointnames()
-    #     self.cmdmsg.position     = pd #[np.nan, np.nan, np.nan, np.nan, np.nan] 
-    #     self.cmdmsg.velocity     = vd #[np.nan, np.nan, np.nan, np.nan, np.nan]#
-    #     self.cmdmsg.effort       = [np.nan, np.nan, motor35eff, np.nan, np.nan]
-    #     self.cmdpub.publish(self.cmdmsg)
+
+            # self.get_logger().info(f"actual joint last {qlast}")
+
+            # Compute the old forward kinematics.
+            (p, R, Jv, Jw) = self.chain.fkin(qlast)
+            self.get_logger().info(f"actualpos task {p}")
+            # Set up the inverse kinematics.
+            vr    = vd + self.lam * ep(pdlast, p)
+            Jinv = Jv.T @ np.linalg.pinv(Jv @ Jv.T + self.gam**2 * np.eye(3))
+            qdot = Jinv @ vr
+            q = qlast + dt * qdot
+            self.get_logger().info(f"qlast {qlast}")
+
+            self.get_logger().info(f"qdot {qdot}, dt: {dt}")
+            self.get_logger().info(f"command q {q}")
+
+            self.pd = pd
+            self.q = q
+
+            # self.get_logger().info(f"q after {q}")
+
+            self.saveFdbck(q)
+
+            return list(q[:, 0]), list(qdot[:, 0])
+        return None, None
+    
+    def sendCmd(self):
+        sec, nano = self.get_clock().now().seconds_nanoseconds()
+        now = sec + nano*10**(-9)
+        dt = (now - self.start_time) -self.t
+        self.t = now - self.start_time
+
+        if (self.t < GO_TO_SHOULDER + GO_TO_IDLE) and self.starting:
+            q, qdot = self.goto_idle(self.t)
+        else:
+            if self.starting or self.t > GO_TO_POINT:
+                self.starting = False
+                sec, nano = self.get_clock().now().seconds_nanoseconds()
+                self.start_time = sec + nano*10**(-9)
+                self.t = 0.0
+                self.test_idx += 1
+            q, qdot = self.start_test(self.t, dt)
+            
+        self.q = q[:]
+        motor35eff = 7.1 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        q[1] = q[1] + motor17offset
+
+        # self.get_logger().info(f"command q {q}")
+
+
+
+        # pd[2] = np.nan
+        # vd[2] = np.nan
+        self.cmdmsg.header.stamp = self.get_clock().now().to_msg()
+        self.cmdmsg.name         = self.jointnames()
+        self.cmdmsg.position     = q #[np.nan, np.nan, np.nan, np.nan, np.nan] 
+        self.cmdmsg.velocity     = qdot #[np.nan, np.nan, np.nan, np.nan, np.nan]#
+        self.cmdmsg.effort       = [np.nan, np.nan, motor35eff, np.nan, np.nan]
+        self.cmdpub.publish(self.cmdmsg)
 
 #   Main Code
 #
