@@ -8,33 +8,123 @@
 
   <link name="world"/>
 
-
-  <joint name="base" type="continuous">
+  <joint name="placement" type="fixed">
     <parent link="world"/>
+    <child  link="baseplate"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>			<!-- WHERE IS THE BASE -->
+  </joint>
+
+  <!-- BASE PLATE: Shift across the base plate to the base motor. --> 
+  <link name="baseplate">
+    <visual>
+      <origin xyz="0.0 0.0 0.0125" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.2 0.1 0.0230"/>
+        </geometry>
+      <material name="wood"/>
+    </visual>
+  </link>
+
+  <joint name="baseplate" type="fixed">
+    <parent link="baseplate"/>
+    <child  link="basemotor"/>
+    <origin xyz="0 0 0.0230" rpy="0 0 0"/>
+  </joint>
+
+  <link name="basemotor">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
+  
+  <joint name="base" type="continuous">
+    <parent link="basemotor"/>
     <child  link="lbracket"/>
-    <origin xyz="0 -.0775 0.07" rpy="0 0 0"/>
+    <origin xyz="0 0 0.0451" rpy="0 0 0"/>
     <axis   xyz="0 0 1"/>
   </joint>
+  
 
   <link name="lbracket"/>
-
-  <joint name="shoulder" type="continuous">
+  
+  <joint name="lbracket" type="fixed">
     <parent link="lbracket"/>
-    <child  link="bicep"/>
-    <origin xyz="0 0 .055" rpy="0 0 0"/>
-    <axis   xyz="-1 0 0"/>
+    <child  link="shouldermotor"/>
+    <origin xyz="-0.02 0 0.045" rpy="0 1.5708 0"/>	  <!-- L BRACKET DIMENIONS -->
   </joint>
 
-  <link name="bicep"/>
+  <!-- SHOULDER MOTOR: Thickness: X5 = 31.1mm, X8 = 45.1mm -->
+  <link name="shouldermotor">
+    <visual>
+    <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
 
-  <joint name="elbow" type="continuous">
+  <joint name="shoulder" type="continuous">
+    <parent link="shouldermotor"/>
+    <child  link="bicep"/>
+    <origin xyz="0 0 0.0512" rpy="0 -1.5708 0"/>
+    <axis   xyz="1 0 0"/>
+  </joint>
+
+  <!-- UPPER ARM: Shift across the upper arm (1/4in thickness) -->
+  <link name="bicep">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 3.1415"/>
+      <geometry>
+      	<mesh filename="package://bmoHanoi/meshes/BMOArm.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="cyan"/>
+    </visual>
+    <!-- Add a visual element -->
+  </link>
+
+  <joint name="elbowBase" type="fixed">
     <parent link="bicep"/>
-    <child  link="forearm"/>
-    <origin xyz="0.052 0 .45" rpy="0 0 0"/>
+    <child  link="elbowmotor"/>
+    <origin xyz="0 0 .4351" rpy="0 0 0"/>
     <axis   xyz="1 0 0 "/>
   </joint>
 
-  <link name="forearm"/>
+  <link name="elbowmotor">
+    <visual>
+    <origin xyz="0 0 0" rpy="0 -1.5708 0"/>		
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
+  
+  <joint name="elbow" type="continuous">
+    <parent link="elbowmotor"/>
+    <child  link="forearm"/>
+    <origin xyz="-0.0512 0 0" rpy="0 0 3.1415"/>
+    <axis   xyz="1 0 0 "/>
+  </joint>
+  
+  <link name="forearm">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 3.1415"/>
+      <geometry>
+      	<mesh filename="package://bmoHanoi/meshes/BMOArm.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="cyan"/>
+    </visual>
+  </link>
 
   <joint name="wrist" type="continuous">
     <parent link="forearm"/>
@@ -47,35 +137,38 @@
 
   <joint name="head" type="continuous">
     <parent link="hand"/>
-    <child  link="camera"/>
+    <child  link="claw"/>
     <origin xyz="-.0975 0 -.045" rpy="0 0 0"/>
     <axis   xyz="0 0 -1"/>
   </joint>
-
+  
+  <link name="claw">
+      <visual>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+      	<mesh filename="package://bmoHanoi/meshes/BMOClaw.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="green"/>
+    </visual>
+  </link>
+  
+  <joint name="claw" type="fixed">
+    <parent link="claw"/>
+    <child  link="camera"/>
+    <origin xyz="-.03 .095 -0.02" rpy="0 0 0"/>
+    <!-- <axis   xyz="0 0 -1"/> -->
+  </joint>
+  
   <link name="camera"/>
-
-  <joint name="claw" type="continuous">
-    <parent link="hand"/>
-    <child  link="camera"/>
-    <origin xyz="-.0975 0 -.045" rpy="0 0 0"/>
-    <axis   xyz="0 0 -1"/>
-  </joint>
 
   <joint name="final" type="fixed">
     <parent link="camera"/>
     <child  link="tip"/>
-    <origin xyz=".035 .095 -0.08" rpy="0 0 0"/>
+    <origin xyz=".035 .035 -0.09" rpy="0 0 0"/>
   </joint>
 
   <link name="tip"/>
-
-  <joint name="gripper" type="fixed">
-    <parent link="tip"/>
-    <child  link="donut"/>
-    <origin xyz=".035 .095 -0.08" rpy="0 0 0"/>
-  </joint>
-
-  <link name="donut"/>
 
 
   <!-- *************************************************** -->
@@ -96,6 +189,8 @@
   <material name="yellow">   <color rgba="1.00 1.00 0.00 1"/>  </material>
 
   <material name="orange">   <color rgba="1.00 0.65 0.00 1"/>  </material>
+  <material name="wood">  <color rgba="0.82 0.62 0.04 1"/>  </material>
+  <material name="hebi">  <color rgba="0.82 0.06 0.06 1"/>  </material>
 
 
   <!-- *************************************************** -->
