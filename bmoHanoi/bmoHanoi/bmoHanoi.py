@@ -305,12 +305,10 @@ class BmoHanoi(Node):
     def depth_process(self, msg):
         # Confirm the encoding and report.
         assert(msg.encoding == "16UC1")
-
         # Extract the depth image information (distance in mm as uint16).
         width  = msg.width
         height = msg.height
         depth  = np.frombuffer(msg.data, np.uint16).reshape(height, width)
-
         self.camera.depthImage = depth
         # Report.
     
@@ -319,6 +317,8 @@ class BmoHanoi(Node):
 
     # def updateState(self):
     #     self.prSt = self.nxSt
+        
+    # TODO: update all of our states to use generic spline class
 
     def gotoRec(self):
         q, qdot = spline(self.t, self.T, np.array(self.initJointPos).reshape(self.jointShape),
@@ -347,6 +347,7 @@ class BmoHanoi(Node):
         
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
             xc, yc, zc = self.camera.getPriorityDonut('orange')
+            # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
