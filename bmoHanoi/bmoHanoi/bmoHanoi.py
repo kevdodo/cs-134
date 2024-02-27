@@ -49,7 +49,7 @@ from bmoHanoi.TrajectoryUtils import *
 from bmoHanoi.TransformHelpers import *
 from bmoHanoi.KinematicChain import *
 
-from bmoHanoi.CameraProcess import CameraProcess
+# from bmoHanoi.CameraProcess import CameraProcess
 
 class CameraProcess():
     def __init__(self, msg):
@@ -100,12 +100,6 @@ class CameraProcess():
         x_bar = (v - cx) / fx
         y_bar = (u - cy) / fy
         return x_bar, y_bar
-    
-
-class Splines():
-    def __init__(self):
-        self.t = 0.0
-        self.T = None
 
 class Spline():
     def __init__(self, t, T, p0, pd, v0, vd) -> None:
@@ -118,7 +112,70 @@ class Spline():
     
     def excecute_spline():
         pass
+        # return q, qdot
 
+class StateMachine():
+    def __init__(self, start_time):
+        self.prSt = 'GOTO_REC'
+        self.nxSt = 'GRAB'
+        self.priorityDonut = None
+        self.T = 0
+        self.t = 0.0
+        self.dt = 0.0
+        self.start_time = 0.0
+        self.initJointPos = None
+
+        self.state_dict = {'GOTO_REC': self.gotoRec, 
+                    'REC' : self.recon, 
+                    'GOTO_READY': self.gotoReady,
+                    'GOTO_PRI': self.gotoPri,
+                    'GRAB': self.grab,
+                    'HONE': self.hone}
+        
+    def setT(self):
+        self.T = TIME_DICT[self.prSt]
+    
+    def get_state(self):
+        return self.prSt
+    
+    def updateTime(self, sec, nano):
+        if self.t < self.T:
+            now = sec + nano*10**(-9)
+            self.dt = (now - self.start_time) - self.t
+            self.t = now - self.start_time
+
+    def updateState(self):
+        self.prSt = self.nxSt
+
+    def updateNextState(self, sec, nano, priorityDonut):
+        if (self.t < self.T):
+            self.nxSt = self.prSt
+            return False
+        else:
+          match self.prSt:
+            case 'GOTO_REC':
+                self.nxSt = 'REC'
+            case 'REC':
+                # self.get_logger().info(f"priority {(self.priorityDonut)}")
+                if priorityDonut is not None:
+                  self.nxSt = 'HONE'
+                else:
+                  self.nxSt = 'HONE'
+            case 'GOTO_READY':
+                self.nxSt = 'GOTO_PRI'
+            case 'GOTO_PRI':
+                self.nxSt = 'GOTO_PRI'
+            case 'GRAB':
+                self.nxSt = 'GOTO_REC'
+            case 'HONE': 
+                self.nxSt = 'HONE'
+          self.t = 0.0
+          self.dt = 0.0
+          self.start_time = sec + nano*10**(-9)
+          return True
+        
+    def get_curr_state(self):
+        return self.prSt 
 
 class BmoHanoi(Node):
     # Initialization.
@@ -142,36 +199,33 @@ class BmoHanoi(Node):
         self.chain = KinematicChain('world', 'tip', self.jointnames()[:5])
         self.camChain = KinematicChain('world', 'camera', self.jointnames()[:5])
 
-        self.T = 0
+        # self.T = 0
         # Create a timer to keep calculating/sending commands.
         rate       = RATE
-        self.t = 0.0
-        self.dt = 0.0
+        # self.t = 0.0
+        # self.dt = 0.0
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         self.start_time = sec + nano*10**(-9)
 
-        self.prSt = 'GOTO_REC'
-        self.nxSt = 'GRAB'
-        self.priorityDonut = None
+        # self.prSt = 'GOTO_REC'
+        # self.nxSt = 'GRAB'
+        # self.priorityDonut = None
 
         self.actualJointPos   = self.grabfbk()
         self.actualJointVel   = None
         self.actualJointEff   = None
 
         self.initJointPos     = self.actualJointPos[:5]
-        self.taskShape = (5, 1)
         self.jointShape = (5, 1)
 
         self.q = np.array(self.actualJointPos[:5]).reshape(self.jointShape)
 
-
-        self.recon_joint = np.radians(np.array([0.0, 0.0, -90, 0.0, 0.0])).reshape(self.taskShape)
+        self.recon_joint = np.radians(np.array([0.0, 0.0, -90, 0.0, 0.0])).reshape(self.jointShape)
         self.taskPosition0, self.taskOrientation0, _, _ = self.chain.fkin(self.q)
 
         self.pd = self.taskPosition0[:]
         self.vd = np.zeros((3, 1))
         self.Rd = self.taskOrientation0
-        self.wd = np.zeros((2, 1))
 
 
         self.readyJointState = np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
@@ -180,7 +234,7 @@ class BmoHanoi(Node):
         self.gam = 0.3
         self.lam = .1
 
-        start = np.zeros(self.taskShape)
+        start = np.zeros(self.jointShape)
         start[2] = np.radians(45.0)
 
         self.reconPos, self.reconOr, _, _ = self.chain.fkin(self.recon_joint)
@@ -209,14 +263,9 @@ class BmoHanoi(Node):
                                (self.timer.timer_period_ns * 1e-9, rate))
         
         self.depthImage = None  
-        
-        self.state_dict = {'GOTO_REC': self.gotoRec, 
-                           'REC' : self.recon, 
-                           'GOTO_READY': self.gotoReady,
-                             'GOTO_PRI': self.gotoPri,
-                            'GRAB': self.grab,
-                            'HONE': self.hone}
-        
+
+        self.state_machine = StateMachine(self.chain)
+
         self.grabpos, self.grabvel = 0.0, 0.0
 
     def orangeImage(self, msg):
@@ -264,59 +313,12 @@ class BmoHanoi(Node):
 
         self.camera.depthImage = depth
         # Report.
-
-    def saveFdbck(self,pd):
-        self.positionCmds.append(pd)
-        self.actualPos.append(self.actualJointPos)
-        self.actEff.append(self.actualJointEff)   
     
-    def setT(self):
-        self.T = TIME_DICT[self.prSt]
+    # def setT(self):
+    #     self.T = TIME_DICT[self.prSt]
 
-    def updateTime(self):
-        # if self.prSt != self.nxSt:
-        sec, nano = self.get_clock().now().seconds_nanoseconds()
-
-        if self.t < self.T:
-            now = sec + nano*10**(-9)
-            self.dt = (now - self.start_time) - self.t
-            self.t = now - self.start_time
-    
-    def updateNextState(self):
-        if (self.t < self.T):
-            self.nxSt = self.prSt
-        else:
-          match self.prSt:
-            case 'GOTO_REC':
-                self.nxSt = 'REC'
-            case 'REC':
-                self.get_logger().info(f"priority {(self.priorityDonut)}")
-                if self.priorityDonut is not None:
-                  self.nxSt = 'HONE'
-                else:
-                  self.nxSt = 'HONE'
-            case 'GOTO_READY':
-                self.nxSt = 'GOTO_PRI'
-            case 'GOTO_PRI':
-                self.nxSt = 'GOTO_PRI'
-            case 'GRAB':
-                self.nxSt = 'GOTO_REC'
-            case 'HONE': 
-                self.nxSt = 'HONE'
-          sec, nano = self.get_clock().now().seconds_nanoseconds()
-          self.t = 0.0
-          self.dt = 0.0
-          self.start_time = sec + nano*10**(-9)
-
-          self.taskPosition0, _, _, _ = self.chain.fkin(self.q) #self.pd[:]
-          self.get_logger().info(f"task position {self.taskPosition0}")
-          self.get_logger().info(f"time {[self.T, self.t]}")
-
-          self.initJointPos  = self.q[:]
-
-
-    def updateState(self):
-        self.prSt = self.nxSt
+    # def updateState(self):
+    #     self.prSt = self.nxSt
 
     def gotoRec(self):
         q, qdot = spline(self.t, self.T, np.array(self.initJointPos).reshape(self.jointShape),
@@ -336,66 +338,68 @@ class BmoHanoi(Node):
 
         return q, qdot
 
-    # must be cyclic
     def recon(self):
         self.priorityDonut = None
         q, qdot = spline(1, 1, np.array(self.initJointPos).reshape(self.jointShape),
                                            np.array(self.initJointPos).reshape(self.jointShape),
                                              np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
+        
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
             xc, yc, zc = self.camera.getPriorityDonut('orange')
-
-            # self.get_logger().info(f"cam x, y, z {[xc, yc, zc]}")
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
-            
-            # self.get_logger().info(f"test cam x, y, z {p}")
             self.priorityDonut = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
         
         return q, qdot
     
-    def hone_ikin(self, pd, vd, wd, Rd):
-        qlast  = np.array(self.q).reshape(self.taskShape)
-        pdlast = self.pd[:]
+    # DEPRECATED, use ikin with stage 'hone'
+    # def hone_ikin(self, pd, vd, wd, Rd):
+    #     qlast  = np.array(self.q).reshape(self.taskShape)
+    #     pdlast = self.pd[:]
 
-        # # Compute the old forward kinematics.
-        (p, R, Jv, Jw) = self.chain.fkin(qlast)
-        self.get_logger().info(f"p actual {p}")
+    #     # # Compute the old forward kinematics.
+    #     (p, R, Jv, Jw) = self.chain.fkin(qlast)
+    #     self.get_logger().info(f"p actual {p}")
 
-        # # Set up the inverse kinematics.
-        vr    = vd + self.lam * ep(pdlast, p)
+    #     # # Set up the inverse kinematics.
+    #     vr    = vd + self.lam * ep(pdlast, p)
 
-        wr    =  (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ \
-         (wd + self.lam * .5 * cross(R[0:3,1:2], Rd[0:3,1:2]))  # eR(Rd, R)
+    #     wr    =  (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ \
+    #      (wd + self.lam * .5 * cross(R[0:3,1:2], Rd[0:3,1:2]))  # eR(Rd, R)
 
-        Jw = (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ Jw
-        J     = np.vstack((Jv, Jw))
-        xrdot = np.vstack((vr, wr))
+    #     Jw = (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ Jw
+    #     J     = np.vstack((Jv, Jw))
+    #     xrdot = np.vstack((vr, wr))
         
-        Jinv = J.T @ np.linalg.pinv(J @ J.T + self.gam**2 * np.eye(6))
-        qdot = Jinv @ xrdot
-        q = qlast + self.dt * qdot
+    #     Jinv = J.T @ np.linalg.pinv(J @ J.T + self.gam**2 * np.eye(6))
+    #     qdot = Jinv @ xrdot
+    #     q = qlast + self.dt * qdot
         
-        # Save the joint value and desired values for next cycle.
-        self.q  = q
-        self.pd = pd
-        self.Rd = Rd
-
-
-        return q, qdot
+    #     # Save the joint value and desired values for next cycle.
+    #     self.q  = q
+    #     self.pd = pd
+    #     self.Rd = Rd
+    #     return q, qdot
     
-    def ikin(self, pd, vd, wd, Rd):
+    def ikin(self, pd, vd, wd, Rd, stage=None):
 
-        qlast  = np.array(self.q).reshape(self.taskShape)
+        qlast  = np.array(self.q).reshape(self.jointShape)
         pdlast = self.pd[:]
 
         # # Compute the old forward kinematics.
         (p, R, Jv, Jw) = self.chain.fkin(qlast)
         vr    = vd + self.lam * ep(pdlast, p)
         wr    = wd + self.lam * eR(Rd, R)
+
+        if stage == 'hone':
+            wr =  (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ \
+         (wd + self.lam * .5 * cross(R[0:3,1:2], Rd[0:3,1:2]))  # eR(Rd, R)
+            Jw = (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ Jw
+        
         J     = np.vstack((Jv, Jw))
         xrdot = np.vstack((vr, wr))
+
         
         Jinv = J.T @ np.linalg.pinv(J @ J.T + self.gam**2 * np.eye(6))
         qdot = Jinv @ xrdot
@@ -426,24 +430,13 @@ class BmoHanoi(Node):
             kp = .75
             (p, R, jv, jr) = self.camChain.fkin(self.q)
 
-
-            # np.array([v - w, 0, -(u - h)]).reshape((3, 1)) * kp
-            # self.get_logger().info(f"tx ty tz: {np.array([v - w/2, (u - h/2), 0])*kp}")
-            # self.get_logger().info(f"camera: {np.array([v - w/2, 0, -(u - h/2)]) * kp}")
-            # self.get_logger().info(f"world: {R @ (np.array([v - w/2, 0, -(u - h/2)]).reshape((3, 1)))}")
-
-            # return R @ (-1 * np.array([-1 * (w/2 - v) , 0, -(h/2 - u)]).reshape((3, 1)) * kp)
             return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
         return np.zeros((3, 1))
 
     def hone(self):
-
         (p, R, jv, jr) = self.chain.fkin(self.q)
         self.pd = self.taskPosition0[:]
         pd = self.pd
-
-        # pd = np.array([0.07247218, -0.31000892, .41818939]).reshape((3, 1))
-        self.get_logger().info(f"pd: {[pd]}")
 
         vd = np.zeros((3, 1))
         wd = self.centerColor('orange')
@@ -452,20 +445,13 @@ class BmoHanoi(Node):
         theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
         theta_z = np.arctan2(R[1, 0], R[0, 0])
 
-        # Rd = Rotz(theta_z) @ Roty(theta_y)\
-        # @ Rotx(theta_x) 
-
-
         Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
         @ Rotx(theta_x + wd[0, 0]*1/RATE) 
-
 
         q, qdot = self.hone_ikin(pd, vd, wd, Rd)
         self.get_logger().info(f"wd: {[wd]}")
 
         return q, qdot
-    
-
     
     def gotoPri(self):
         task_shape =(3, 1)
@@ -489,14 +475,29 @@ class BmoHanoi(Node):
         return self.ikin(pd, vd, wd, Rd)
     
     def executeState(self):
-        return self.state_dict[self.prSt]()
+        return self.state_dict[self.state_machine.get_curr_state()]()
     
     def sendCmd(self):
-        self.setT()
+        # self.state_machine.updateTime()
+        self.state_machine : StateMachine
+        self.state_machine.setT()
+
+        sec, nano = self.get_clock().now().seconds_nanoseconds()
+        self.state_machine.updateTime(sec, nano)
+        
+        if self.state_machine.updateNextState(self.q, sec, nano, self.priorityDonut):
+            self.taskPosition0, _, _, _ = self.chain.fkin(self.q) 
+            self.initJointPos  = self.q
+
+        self.state_machine.updateState()
+
         q, qdot = self.executeState()
-        self.updateNextState()
-        self.updateTime()
-        self.updateState()
+        
+        # self.setT()
+        # q, qdot = self.executeState()
+        # self.updateNextState()
+        # self.updateTime()
+        # self.updateState()
 
         q, qdot = list(q[:, 0]), list(qdot[:, 0])
 
@@ -506,7 +507,7 @@ class BmoHanoi(Node):
         motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         q[1] = q[1] + motor17offset
 
-        if self.prSt == "GRAB":
+        if self.state_machine.prSt == "GRAB":
             q.append(self.grabpos)
             qdot.append(self.grabvel)
             # self.get_logger().info(f"q: {q}")
