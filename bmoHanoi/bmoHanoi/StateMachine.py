@@ -8,6 +8,7 @@ GO_UP_T = 4
 HOLD_T = 3
 PRI_HALF_T = 5
 HONE_HALF_T = 5
+MOVE_DOWN_T = 3
 TIME_DICT = {'GOTO_REC' : GOTO_REC_T, 
                           'REC' : REC_T, 
                           'GOTO_PRI' : GOTO_PRI_T,
@@ -16,7 +17,9 @@ TIME_DICT = {'GOTO_REC' : GOTO_REC_T,
                           'GO_UP': GO_UP_T,
                           'HOLD': HOLD_T,
                           'GOTO_PRI_HALF': PRI_HALF_T,
-                          'HONE_HALF' :HONE_HALF_T}
+                          'HONE_HALF' :HONE_HALF_T,
+                          'MOVE_DOWN' : MOVE_DOWN_T,
+                          'REC_HALF': REC_T}
 
 class StateMachine():
     def __init__(self, sec, nano):
@@ -52,24 +55,29 @@ class StateMachine():
           match self.prSt:
             case 'GOTO_REC':
                 self.nxSt = 'REC'
-            case 'HONE': 
-                self.nxSt = 'GOTO_PRI'
-            case 'HONE_HALF': 
-                self.nxSt = 'HONE'
             case 'REC':
                 # self.get_logger().info(f"priority {(self.priorityDonut)}")
                 if priorityDonut is not None:
                   self.nxSt = 'HONE_HALF'
                 else:
                   self.nxSt = 'REC'
-            case 'GOTO_PRI_HALF':
-                self.nxSt = 'HONE_HALF'
+            case 'HONE_HALF': 
+                self.nxSt = 'MOVE_DOWN'
+            case 'MOVE_DOWN':
+                self.nxSt = 'HONE'
+            case 'HONE': 
+                self.nxSt = 'REC_HALF'
+            case 'REC_HALF':
+                self.nxSt = 'GOTO_PRI'
             case 'GOTO_PRI':
                 self.nxSt = 'HOLD'
             case 'HOLD':
                 self.nxSt = 'GO_UP'
             case 'GO_UP':
                 self.nxSt = 'GOTO_REC'
+            case 'GOTO_PEG':
+                self.nxSt = 'GO_DOWN'
+
                   
           self.t = 0.0
           self.dt = 0.0

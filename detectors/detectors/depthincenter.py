@@ -60,11 +60,6 @@ class CustomNode(Node):
 
         self.get_logger().info(
             "Distance at (row %d, col %d) = %dmm" % (row, col, d))
-        
-    # def eyes(self):
-    #     pass
-
-
 #
 #   Main Code
 #

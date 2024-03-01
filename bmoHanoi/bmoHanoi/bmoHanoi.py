@@ -31,21 +31,6 @@ from bmoHanoi.CameraProcess import CameraProcess
     
 
 
-class Spline():
-    def __init__(self, t, T, p0, pd, v0, vd) -> None:
-        self.t = t
-        self.T = T
-        self.p0 = p0
-        self.pd = pd
-        self.v0 = v0
-        self.vd = vd
-    
-    def excecute_spline():
-        pass
-        # return q, qdot
-
-
-    
 
 class BmoHanoi(Node):
     # Initialization.
@@ -129,7 +114,6 @@ class BmoHanoi(Node):
         # Create a subscriber to continually receive joint state messages.
         self.fbksub = self.create_subscription(
             JointState, '/joint_states', self.recvfbk, 10)
-        self.pubbin = self.create_publisher(Image, name+'/binary',    3)
         self.rec_orange = self.create_subscription(Image, name+'/binary', self.orangeImage,    3)
 
         self.cmdmsg = JointState()
@@ -151,7 +135,9 @@ class BmoHanoi(Node):
                     'HONE': self.hone,
                     'HONE_HALF': self.honeHalf,
                     'GOTO_READY': self.gotoReady,
-                    'GO_UP' :self.goUp}
+                    'GO_UP' :self.goUp,
+                    'REC_HALF': self.recon,
+                    'MOVE_DOWN': self.move_down}
         self.grabpos, self.grabvel = 0.0, 0.0
 
 
@@ -204,6 +190,8 @@ class BmoHanoi(Node):
         col = width//2
         row = height//2
         self.centerDist   = depth[row][col]
+        self.get_logger().info(
+            "Distance at (row %d, col %d) = %dmm" % (row, col, self.centerDist))
     
     def gotoRec(self):
         
@@ -224,16 +212,6 @@ class BmoHanoi(Node):
         self.grab()
 
         return q, qdot
-
-    def average_index_of_ones(self, arr):
-        # Get the indices of 1's
-        indices = np.argwhere(arr)
-
-        # Calculate the average index for x and y separately
-        avg_index_x = int(np.average(indices[:, 0]))
-        avg_index_y = int(np.average(indices[:, 1]))
-
-        return avg_index_x, avg_index_y
     
     
     def recon(self):
@@ -310,7 +288,13 @@ class BmoHanoi(Node):
         @ Rotx(theta_x + wd[0, 0]*1/RATE) 
 
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
-
+        
+        if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
+            xc, yc, zc = self.camera.getPriorityDonut('orange')
+            # TODO: should this be self.q instead?
+            (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
+            self.priorityDonut = np.array(p + R @ 
+                        np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
         return q, qdot
     
     def ikin(self, pd, vd, wd, Rd, stage=None):
@@ -383,7 +367,6 @@ class BmoHanoi(Node):
         theta_z = np.arctan2(R[1, 0], R[0, 0])
 
         endPick = np.radians([0.0, 0.0, -180.0])
-        self.get_logger().info(f"bruh: {np.degrees([theta_x, theta_y, theta_z])}")
 
         
 
@@ -423,6 +406,20 @@ class BmoHanoi(Node):
         task_shape =(3, 1)
         
         pd, vd = spline(self.state_machine.t, 5*self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+
+        Rd = self.taskOrientation0
+
+        wd = np.zeros(task_shape)
+
+        return self.ikin(pd, vd, wd, Rd, stage="reach")
+
+    def move_down(self):
+        task_shape =(3, 1)
+        place = copy.deepcopy(self.priorityDonut)
+        place[0:2, 0] = self.taskPosition0[0:2, 0]
+        
+        pd, vd = spline(self.state_machine.t, 2*self.state_machine.T, self.taskPosition0, place, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
 
         Rd = self.taskOrientation0
@@ -471,6 +468,8 @@ class BmoHanoi(Node):
         sec, nano = self.get_clock().now().seconds_nanoseconds()
 
         if self.state_machine.updateNextState(sec, nano, self.priorityDonut):
+            self.get_logger().info("donut")
+
             self.taskPosition0, self.taskOrientation0 , _, _ = self.chain.fkin(self.q) 
             self.grabpos0 = self.grabpos
             self.initJointPos  = self.q
@@ -479,6 +478,8 @@ class BmoHanoi(Node):
 
 
         q, qdot = list(q[:, 0]), list(qdot[:, 0])
+
+
 
 
         # self.pd = pd
@@ -491,7 +492,6 @@ class BmoHanoi(Node):
         # if self.state_machine.grab:
         q.append(self.grabpos)
         qdot.append(self.grabvel)
-            # self.get_logger().info(f"q: {q}")
 
 
         # self.get_logger().info(f"q: {q}")

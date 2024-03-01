@@ -22,7 +22,7 @@ class CameraProcess():
 
         dists = self.depthImage[self.hsvImageMap[color] != 0.0]
 
-        return np.nanmean(dists)
+        return np.nanmedian(dists)
     
     def getPriorityDonut(self, color):
         camera_scale = 1000
