@@ -1,6 +1,17 @@
+
+
+RATE = 100
+
+COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
+                 'green': [(40, 80), (55, 220), (35, 175)],
+                  'yellow': [(15, 55), (65, 255), (150, 255)],
+                   'orange': [(0, 15), (80, 255), (146, 255)],
+                    'red': [(0,5), (160, 255), (70, 230)] 
+                    }
+
 import cv2
 import numpy as np
-
+import copy
 # ROS Imports
 import rclpy
 import cv_bridge
@@ -11,33 +22,30 @@ from sensor_msgs.msg    import Image, JointState, CameraInfo
 from bmoHanoi.process_color_depth import rgb_process, depth_process
 from bmoHanoi.TrajectoryUtils import *
 from bmoHanoi.TransformHelpers import *
-
-RATE = 100
-GOTO_REC_T = 10
-REC_T = 3
-GOTO_PRI_T = 10
-GRAB_T = 10
-READY_T = 10
-COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
-                 'green': [(40, 80), (55, 220), (35, 175)],
-                  'yellow': [(15, 55), (65, 255), (150, 255)],
-                   'orange': [(0, 15), (80, 255), (146, 255)],
-                    'red': [(0,5), (160, 255), (70, 230)] 
-                    }
-import cv2
-import numpy as np
-
-# ROS Imports
-import rclpy
-import cv_bridge
-
-from rclpy.node         import Node
-from sensor_msgs.msg    import Image, JointState
-
-
-from bmoHanoi.TrajectoryUtils import *
-from bmoHanoi.TransformHelpers import *
 from bmoHanoi.KinematicChain import *
+
+from bmoHanoi.StateMachine import StateMachine
+from bmoHanoi.CameraProcess import CameraProcess
+
+
+    
+
+
+class Spline():
+    def __init__(self, t, T, p0, pd, v0, vd) -> None:
+        self.t = t
+        self.T = T
+        self.p0 = p0
+        self.pd = pd
+        self.v0 = v0
+        self.vd = vd
+    
+    def excecute_spline():
+        pass
+        # return q, qdot
+
+
+    
 
 class BmoHanoi(Node):
     # Initialization.
@@ -45,17 +53,16 @@ class BmoHanoi(Node):
    
         # Initialize the node, naming it as specified
         super().__init__(name)
+
+        self.camera = None
         def cb(msg):
-            self.camD = np.array(msg.d).reshape(5)
-            self.camK = np.array(msg.k).reshape((3,3))
-            self.camw = msg.width
-            self.camh = msg.height
-            self.get_logger().info(f"bruhhhh{self.camw}")
+            self.camera = CameraProcess(msg)
             self.caminfoready = True
         # Temporarily subscribe to get just one message.
         self.get_logger().info("Waiting for camera info...")
         sub = self.create_subscription(CameraInfo, '/camera/color/camera_info', cb, 1)
         self.caminfoready = False
+
         while not self.caminfoready:
             rclpy.spin_once(self)
         self.destroy_subscription(sub)  
@@ -64,12 +71,8 @@ class BmoHanoi(Node):
         self.chain = KinematicChain('world', 'tip', self.jointnames()[:5])
         self.camChain = KinematicChain('world', 'camera', self.jointnames()[:5])
 
-
-        self.T = 0
         # Create a timer to keep calculating/sending commands.
         rate       = RATE
-        self.t = 0.0
-        self.dt = 0.0
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         self.start_time = sec + nano*10**(-9)
 
@@ -88,21 +91,22 @@ class BmoHanoi(Node):
         self.q = np.array(self.actualJointPos[:5]).reshape(self.jointShape)
 
 
-        self.recon_joint = np.array([0.0, -.27, -1.47, -.15 + .58, 0.0]).reshape(self.taskShape)
+        self.recon_joint = np.radians(np.array([0.0, -15, -60, 30, 0.0])).reshape(self.taskShape)
         self.taskPosition0, self.taskOrientation0, _, _ = self.chain.fkin(self.q)
-        self.Rd = self.taskOrientation0
+
+        self.grabpos = 0.0
+        self.grabpos0 = self.grabpos
 
         self.pd = self.taskPosition0[:]
         self.vd = np.zeros((3, 1))
+        self.Rd = self.taskOrientation0
         self.wd = np.zeros((2, 1))
 
-        self.hsvlimits = np.array(COLOR_HSV_MAP['orange'])
-
-        self.readyJointState = np.radians(np.array([0.0, 0.0, -90.0, -90, 0.0]))
+        self.readyJointState = np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
         self.ready_Rd = Rotz(np.radians(180))
 
         self.gam = 0.0
-        self.lam = 0.0
+        self.lam = 10.0
 
         start = np.zeros(self.taskShape)
         start[2] = np.radians(45.0)
@@ -112,8 +116,8 @@ class BmoHanoi(Node):
         self.bridge = cv_bridge.CvBridge()
         self.pubrgb = self.create_publisher(Image, '/camera/color/display_image', 3)
         # Create Subscribers for image
-        self.sub_rgb = self.create_subscription(Image, '/camera/color/image_raw', 
-                                                self.rgb_process, 1)
+        # self.sub_rgb = self.create_subscription(Image, '/camera/color/image_raw', 
+        #                                         self.rgb_process, 1)
         self.sub_depth = self.create_subscription(Image, '/camera/aligned_depth_to_color/image_raw',
                                                 self.depth_process, 1)
         self.cmdpub = self.create_publisher(JointState, '/joint_commands', 10)
@@ -126,8 +130,11 @@ class BmoHanoi(Node):
         self.fbksub = self.create_subscription(
             JointState, '/joint_states', self.recvfbk, 10)
         self.pubbin = self.create_publisher(Image, name+'/binary',    3)
+        self.rec_orange = self.create_subscription(Image, name+'/binary', self.orangeImage,    3)
 
         self.cmdmsg = JointState()
+
+        self.state_machine = StateMachine(sec, nano)
 
         self.timer = self.create_timer(1/rate, self.sendCmd)
         self.get_logger().info("Sending commands with dt of %f seconds (%fHz)" %
@@ -136,8 +143,22 @@ class BmoHanoi(Node):
         self.hsvImage = None                   
         self.depthImage = None  
 
+        self.state_dict = {'GOTO_REC': self.gotoRec, 
+                    'REC' : self.recon, 
+                    'GOTO_PRI': self.gotoPriPick,
+                    'GOTO_PRI_HALF': self.gotoPriPickHalf,
+                    'HOLD': self.hold_close,
+                    'HONE': self.hone,
+                    'HONE_HALF': self.honeHalf,
+                    'GOTO_READY': self.gotoReady,
+                    'GO_UP' :self.goUp}
+        self.grabpos, self.grabvel = 0.0, 0.0
+
+
          #Create a temporary handler to grab the info.
     
+    def orangeImage(self, msg):
+        self.camera.hsvImageMap['orange'] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
@@ -145,7 +166,7 @@ class BmoHanoi(Node):
 
     # Shutdown
     def shutdown(self):
-        # No particular cleanup, just shut down the node.
+        # No particular cleanup, just shut dowfn the node.
         self.destroy_node()
 
     def recvfbk(self, fbkmsg):
@@ -178,125 +199,29 @@ class BmoHanoi(Node):
         height = msg.height
         depth  = np.frombuffer(msg.data, np.uint16).reshape(height, width)
 
-        self.depthImage = depth
+        self.camera.depthImage = depth
         # Report.
         col = width//2
         row = height//2
         self.centerDist   = depth[row][col]
-
-    # Process the image (detect the ball).
-    def rgb_process(self, msg):
-        # Confirm the encoding and report.
-        assert(msg.encoding == "rgb8")
-        # self.get_logger().info(
-        #     "Image %dx%d, bytes/pixel %d, encoding %s" %
-        #     (msg.width, msg.height, msg.step/msg.width, msg.encoding))
-
-        # Convert into OpenCV image, using RGB 8-bit (pass-through).
-        frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
-
-        # Update the HSV limits (updating the control window).
-
-        # Convert to HSV
-        hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-        # hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)  # Cheat: swap red/blue
-
-        # Threshold in Hmin/max, Smin/max, Vmin/max
-        binary = cv2.inRange(hsv, self.hsvlimits[:,0], self.hsvlimits[:,1])
-
-        self.hsvImage = binary
-
-        # Grab the image shape, determine the center pixel.
-        (H, W, D) = frame.shape
-        uc = W//2
-        vc = H//2
-
-        # Draw the center lines.  Note the row is the first dimension.
-        frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
-        frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
-
-        # Report the center HSV values.  Note the row comes first.
-        # self.get_logger().info(
-        #     "Center pixel HSV = (%3d, %3d, %3d)" % tuple(hsv[vc, uc]))
-
-        # Convert the frame back into a ROS image and republish.
-        self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))
-
-        # Also publish the thresholded binary (black/white) image.
-        self.pubbin.publish(self.bridge.cv2_to_imgmsg(binary))
     
-    def saveFdbck(self,pd):
-        self.positionCmds.append(pd)
-        self.actualPos.append(self.actualJointPos)
-        self.actEff.append(self.actualJointEff)   
-    
-    def setT(self):
-        match self.prSt:
-            case 'GOTO_REC':
-                self.T = GOTO_REC_T
-            case 'REC':
-                self.T = REC_T
-            case 'GOTO_PRI':
-                self.T = GOTO_PRI_T
-            case 'GRAB':
-                self.T = GRAB_T  
-            case 'GOTO_READY':
-                self.T = READY_T
-    def updateTime(self):
-        if self.prSt != self.nxSt:
-            sec, nano = self.get_clock().now().seconds_nanoseconds()
-            self.t = 0.0
-            self.dt = 0.0
-            self.start_time = sec + nano*10**(-9)
-        elif self.t < self.T:
-            sec, nano = self.get_clock().now().seconds_nanoseconds()
-            now = sec + nano*10**(-9)
-            self.dt = (now - self.start_time) - self.t
-            self.t = now - self.start_time
-    
-    def updateNextState(self):
-        if (self.t < self.T):
-            self.nxSt = self.prSt
-        else:
-          match self.prSt:
-            case 'GOTO_REC':
-                self.nxSt = 'REC'
-            case 'REC':
-                self.get_logger().info(f"priority {(self.priorityDonut)}")
-                if self.priorityDonut is not None:
-                  self.nxSt = 'GOTO_READY'
-                else:
-                  self.nxSt = 'REC'
-                # self.get_logger().info(f"nx {(self.nxSt)}")
-            case 'GOTO_READY':
-                self.nxSt = 'GOTO_PRI'
-            case 'GOTO_PRI':
-                self.nxSt = 'GOTO_PRI'
-            case 'GRAB':
-                self.nxSt = 'GOTO_REC'
-          self.taskPosition0 = self.pd[:]
-          self.initJointPos  = self.q[:]
-
-
-    def updateState(self):
-        self.prSt = self.nxSt
-        # self.get_logger().info(f"state {(self.prSt)}")
-
     def gotoRec(self):
         
-        q, qdot = spline(self.t, self.T, np.array(self.initJointPos).reshape(self.jointShape),
+
+        q, qdot = spline(self.state_machine.t, self.state_machine.T, np.array(self.initJointPos).reshape(self.jointShape),
                           self.recon_joint, 
                        np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
         
-        if self.t < self.T / 2:
+        if self.state_machine.t < self.state_machine.T / 2:
             elbow, elbowdot = self.initJointPos[2], 0.0
         else:
-            elbow,elbowdot = spline(self.t - self.T/2, self.T/2, self.initJointPos[2], self.recon_joint[2, 0], 
+            elbow,elbowdot = spline(self.state_machine.t - self.state_machine.T/2, self.state_machine.T/2, self.initJointPos[2], self.recon_joint[2, 0], 
                     0.0, 
                     0.0)
         q[2, 0] = elbow
         qdot[2, 0] = elbowdot 
+        self.grab()
 
         return q, qdot
 
@@ -307,134 +232,251 @@ class BmoHanoi(Node):
         # Calculate the average index for x and y separately
         avg_index_x = int(np.average(indices[:, 0]))
         avg_index_y = int(np.average(indices[:, 1]))
+
         return avg_index_x, avg_index_y
     
     
-    def ir_depth(self, x, y):
-        distance = (self.depthImage[x, y])
-        # self.get_logger().info(f"ir distance {distance}")
-        return distance
-
-    # must be cyclic
     def recon(self):
-        self.priorityDonut = np.array([.18, .50, .06])
-        q, qdot = spline(1, 1, self.recon_joint, self.recon_joint, np.zeros(self.jointShape, dtype=float), 
+        self.priorityDonut = None
+        q, qdot = spline(1, 1, np.array(self.initJointPos).reshape(self.jointShape),
+                                           np.array(self.initJointPos).reshape(self.jointShape),
+                                             np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
         
-
-
-        if len(np.flatnonzero(self.hsvImage)) > 50:
-            camera_scale = 1000
-            v, u = self.average_index_of_ones(self.hsvImage)
-            zc = self.ir_depth(v, u)
-
-            fx = self.camK[0, 0]
-            fy = self.camK[1, 1]
-            cx = self.camK[0, 2]
-            cy = self.camK[1, 2]
-            x_bar = (u - cx) / fx
-            y_bar = (v - cy) / fy
-
-
-
-            # self.get_logger().info(f"k, {self.camK}, shape {np.shape(self.camK)}")
-            # bar = cv2.undistortPoints(np.array([u, v]).reshape((1,1,2)), self.camK, self.camD)
-            # x_bar, y_bar = bar[0,0,0], bar[0,0,1]
-            xc, yc = x_bar * zc / camera_scale, y_bar * zc / camera_scale
-
-            zc = zc / camera_scale
-
-            # theta = self.get_theta()
-            # d = self.get_table_distance(self.camK @ np.array([u, v]))
-            # x, y, z = self.pd[:, 0]
-            # # self.get_logger().info(f"d {d}")
-            self.get_logger().info(f"cam x, y, z {[xc, yc, zc]}")
-            # (p, R, _, _) = self.chain.fkin(self.q)
+        if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
+            xc, yc, zc = self.camera.getPriorityDonut('orange')
+            # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
-            # p[:, 0] = p[:, 0] - np.array([.035, .095, -0.08])
-            self.get_logger().info(f"test cam x, y, z {p}")
-
-
-
             self.priorityDonut = np.array(p + R @ 
-                                          np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+                        np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
         
         return q, qdot
+
     
-    def ikin(self, pd, vd):
+    def centerColor(self, color):
+        # Gives w for realsense
+        if len(np.flatnonzero(self.camera.hsvImageMap[color])) > 50:
 
-        wd = np.zeros((3, 1))
-        Rd = self.ready_Rd
+            self.camera : CameraProcess
+            x_bar, y_bar = self.camera.get_xy_bar(color)
 
-        qlast  = np.array(self.q).reshape(self.taskShape)
+            kp = 1.1
+            (p, R, jv, jr) = self.camChain.fkin(self.q)
+
+            return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
+        return np.zeros((3, 1))
+    
+    def honeHalf(self):
+        (p, R, jv, jr) = self.chain.fkin(self.q)
+        # self.pd = self.taskPosition0[:]
+
+        task_shape = (3,1)
+        
+        pd, vd = spline(self.state_machine.t, 2.2*self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+
+        wd = self.centerColor('orange')
+
+        theta_x = np.arctan2(R[2, 1], R[2, 2])
+        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        theta_z = np.arctan2(R[1, 0], R[0, 0])
+
+        Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
+        @ Rotx(theta_x + wd[0, 0]*1/RATE) 
+
+        q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
+
+        return q, qdot
+    
+    def hone(self):
+        (p, R, jv, jr) = self.chain.fkin(self.q)
+        # self.pd = self.taskPosition0[:]
+
+        task_shape = (3,1)
+        
+        # pd, vd = spline(self.state_machine.t, 2*self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+        #             np.zeros(task_shape, dtype=float))
+
+        pd = self.taskPosition0
+
+        vd = np.zeros((3, 1))
+        wd = self.centerColor('orange')
+
+        theta_x = np.arctan2(R[2, 1], R[2, 2])
+        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        theta_z = np.arctan2(R[1, 0], R[0, 0])
+
+        Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
+        @ Rotx(theta_x + wd[0, 0]*1/RATE) 
+
+        q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
+
+        return q, qdot
+    
+    def ikin(self, pd, vd, wd, Rd, stage=None):
+
+        qlast  = np.array(self.q).reshape(self.jointShape)
         pdlast = self.pd
+        Rdlast = self.Rd
 
         # # Compute the old forward kinematics.
         (p, R, Jv, Jw) = self.chain.fkin(qlast)
-        self.get_logger().info(f"p actual{p}")
-        # # Set up the inverse kinematics.
+
+
         vr    = vd + self.lam * ep(pdlast, p)
-        wr    = wd + self.lam * eR(Rd, R)
-        J     = np.vstack((Jv, Jw))
+        # wr    = wd + self.lam * eR(Rd, R)
+
+        # if stage == 'hone':
+        wr =  (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ \
+        (wd + self.lam * .5 * cross(R[0:3,1:2], Rdlast[0:3,1:2]))  # eR(Rd, R)
+        Jw = (np.eye(3) - (R[0:3,1:2] @ R[0:3,1:2].T)) @ Jw
+        
+        J     = np.vstack((Jv, Jw))     
         xrdot = np.vstack((vr, wr))
-        self.get_logger().info(f"wr {wr.shape}")
-        self.get_logger().info(f"vr {vr.shape}")
+
 
         
         Jinv = J.T @ np.linalg.pinv(J @ J.T + self.gam**2 * np.eye(6))
-        qdot = Jinv @ xrdot
-        q = qlast + self.dt * qdot
+        qsdot = np.array(self.recon_joint).reshape((5,1))
+        qsdot[3, 0] += np.radians(-60)
+
+        qdot = Jinv @ xrdot + (np.eye(5) - Jinv @ J) @ (self.lam * qsdot)
+        # qdot = Jinv @ xrdot
+        q = qlast + self.state_machine.dt * qdot
+        
         # Save the joint value and desired values for next cycle.
         self.q  = q
         self.pd = pd
-        # self.Rd = Rd
+        self.Rd = Rd
 
         return q, qdot
     
+    def goUp(self):
+        task_shape =(3, 1)
+        new_dest = copy.deepcopy(self.priorityDonut[:])
+        new_dest[2, 0] = self.priorityDonut[2,0] + .25
 
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.priorityDonut, new_dest, np.zeros(task_shape, dtype=float), 
+            np.zeros(task_shape, dtype=float))
+        # self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, 0.0, -.5, 0.0, 0.0)
+        wd = np.zeros((3, 1))
+        Rd = self.taskOrientation0
+        return self.ikin(pd, vd, wd, Rd)
+    
     def gotoReady(self):
-        q, qdot = spline(self.t, self.T, np.array(self.recon_joint).reshape(self.jointShape),
+        q, qdot = spline(self.state_machine.t, self.state_machine.T, np.array(self.initJointPos).reshape(self.jointShape),
                           self.readyJointState.reshape(self.jointShape), 
                        np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))        
         return q, qdot
     
-    def gotoPri(self):
+    def gotoPriPick(self):
         task_shape =(3, 1)
         
-        pd, vd = spline(self.t, self.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
-        self.get_logger().info(f"pd {(self.pd)}")
 
-        return self.ikin(pd, vd)
+        R = self.taskOrientation0
+
+        theta_x = np.arctan2(R[2, 1], R[2, 2])
+        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        theta_z = np.arctan2(R[1, 0], R[0, 0])
+
+        endPick = np.radians([0.0, 0.0, -180.0])
+        self.get_logger().info(f"bruh: {np.degrees([theta_x, theta_y, theta_z])}")
+
+        
+
+        # if abs(theta_x - 2 * np.pi) > abs(theta_x):
+        #     endPick[0] = 2 * np.pi
+        # if abs(theta_y - 2 * np.pi) > abs(theta_y):
+        #     endPick[1] = 2 * np.pi
+
+        if abs(theta_z - np.pi) < abs(theta_z):
+            endPick[2] = np.pi
+
+        a, a_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_x, endPick[0], 0.0, 0.0)
+        
+        b, b_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_y, endPick[1], 0.0, 0.0)
+        
+        c, c_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_z, endPick[2], 0.0, 0.0)
+
+
+        wdx = np.array([[0, -c_dot, b_dot], [c_dot, 0, -a_dot], [-b_dot, a_dot, 0]])
+        
+        Rd = Rotz(c) @ Roty(b) @ Rotx(a) 
+
+        Rdot = wdx @ Rd
+        #        wd = np.zeros((3,1))#ez()*a_dot + Rotz(a) @ (ey()*b_dot + Roty(b) @ ex()*c_dot) 
+
+        # wd = np.zeros((3,1))#ez()*a_dot + Rotz(a) @ (ey()*b_dot + Roty(b) @ ex()*c_dot) 
+
+        wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
+
+        self.release()
+        return self.ikin(pd, vd, wd, Rd, stage="reach")
+    
+    def gotoPriPickHalf(self):
+        task_shape =(3, 1)
+        
+        pd, vd = spline(self.state_machine.t, 5*self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+
+        Rd = self.taskOrientation0
+
+        wd = np.zeros(task_shape)
+
+        return self.ikin(pd, vd, wd, Rd, stage="reach")
+
+    
+    def hold_close(self):
+        task_shape =(3, 1)
+        pd, vd = spline(self.state_machine.T, self.state_machine.T, self.taskPosition0, self.taskPosition0, np.zeros(task_shape, dtype=float), 
+            np.zeros(task_shape, dtype=float))
+        wd = np.zeros((3, 1))
+        Rd = self.taskOrientation0
+        self.grab()
+        return self.ikin(pd, vd, wd, Rd)
+    
+        
+    def hold_open(self):
+        task_shape =(3, 1)
+        pd, vd = spline(self.state_machine.T, self.state_machine.T, self.taskPosition0, self.taskPosition0, np.zeros(task_shape, dtype=float), 
+            np.zeros(task_shape, dtype=float))
+        wd = np.zeros((3, 1))
+        Rd = self.taskOrientation0
+        self.release()
+        return self.ikin(pd, vd, wd, Rd)
     
     def grab(self):
-       pass
+        self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, -.6, 0.0, 0.0)
+
+    def release(self):
+        self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, 0.0, 0.0, 0.0)
 
     def executeState(self):
-       match self.prSt:
-            case 'GOTO_REC':
-              return self.gotoRec()
-            case 'REC':
-              return self.recon()
-            case 'GOTO_READY':
-              return self.gotoReady()
-            case 'GOTO_PRI':
-              return self.gotoPri()
-            case 'GRAB':
-              return self.grab()
+        return self.state_dict[self.state_machine.get_curr_state()]()
 
     
     def sendCmd(self):
-    #     self.get_logger().info(f"T {self.T}")
-    #     self.get_logger().info(f"t {self.t}")
+        
+        self.state_machine : StateMachine
+        self.state_machine.setT()
 
-        self.setT()
         q, qdot = self.executeState()
-        # self.get_logger().info(f"nxt {self.nxSt}")
-        self.updateNextState()
-        self.updateTime()
-        self.updateState()
+
+        sec, nano = self.get_clock().now().seconds_nanoseconds()
+
+        if self.state_machine.updateNextState(sec, nano, self.priorityDonut):
+            self.taskPosition0, self.taskOrientation0 , _, _ = self.chain.fkin(self.q) 
+            self.grabpos0 = self.grabpos
+            self.initJointPos  = self.q
+        self.state_machine.updateTime(sec, nano)
+        self.state_machine.updateState()
+
 
         q, qdot = list(q[:, 0]), list(qdot[:, 0])
 
@@ -442,13 +484,15 @@ class BmoHanoi(Node):
         # self.pd = pd
         self.q = q[:]
    
-        motor35eff = 7.1 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        motor35eff = 9.81 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         q[1] = q[1] + motor17offset
 
+        # if self.state_machine.grab:
+        q.append(self.grabpos)
+        qdot.append(self.grabvel)
+            # self.get_logger().info(f"q: {q}")
 
-        q.append(0.0)
-        qdot.append(0.0)
 
         # self.get_logger().info(f"q: {q}")
         # self.get_logger().info(f"p: {pd}")

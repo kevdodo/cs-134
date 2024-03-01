@@ -392,7 +392,7 @@ class BmoHanoi(Node):
         (p, R, Jv, Jw) = self.chain.fkin(qlast)
         self.get_logger().info(f"p actual : {p}")
 
-        vr    = vd + 0.0 * ep(pdlast, p)
+        vr    = vd + self.lam * ep(pdlast, p)
         wr    = wd + 0.0 * eR(Rd, R)
 
         if stage == 'hone':
@@ -428,7 +428,6 @@ class BmoHanoi(Node):
 
             self.camera : CameraProcess
             x_bar, y_bar = self.camera.get_xy_bar(color)
-
 
             kp = .75
             (p, R, jv, jr) = self.camChain.fkin(self.q)

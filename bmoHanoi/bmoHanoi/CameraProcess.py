@@ -1,4 +1,5 @@
 import numpy as np
+
 class CameraProcess():
     def __init__(self, msg):
         self.hsvImageMap = {}
