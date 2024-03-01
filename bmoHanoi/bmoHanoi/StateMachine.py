@@ -9,6 +9,7 @@ HOLD_T = 3
 PRI_HALF_T = 5
 HONE_HALF_T = 5
 MOVE_DOWN_T = 3
+
 TIME_DICT = {'GOTO_REC' : GOTO_REC_T, 
                           'REC' : REC_T, 
                           'GOTO_PRI' : GOTO_PRI_T,
@@ -48,7 +49,7 @@ class StateMachine():
     def updateState(self):
         self.prSt = self.nxSt
 
-    def updateNextState(self, sec, nano, priorityDonut):
+    def updateNextState(self, sec, nano, priorityDonut, peg):
         if (self.t < self.T):
             self.nxSt = self.prSt
         else:
@@ -57,7 +58,9 @@ class StateMachine():
                 self.nxSt = 'REC'
             case 'REC':
                 # self.get_logger().info(f"priority {(self.priorityDonut)}")
-                if priorityDonut is not None:
+                if peg:
+                  self.nxSt = "GOTO_PEG"
+                elif priorityDonut is not None:
                   self.nxSt = 'HONE_HALF'
                 else:
                   self.nxSt = 'REC'
@@ -77,6 +80,10 @@ class StateMachine():
                 self.nxSt = 'GOTO_REC'
             case 'GOTO_PEG':
                 self.nxSt = 'GO_DOWN'
+            case 'GO_DOWN':
+                self.nxSt = 'HOLD_OFF'
+            case 'HOLD_OFF':
+                self.nxST = 'GOTO_REC'
 
                   
           self.t = 0.0
