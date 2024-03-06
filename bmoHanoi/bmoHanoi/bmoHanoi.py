@@ -115,11 +115,11 @@ class BmoHanoi(Node):
             JointState, '/joint_states', self.recvfbk, 10)
         # self.rec_orange = self.create_subscription(Image, name + '/orangebinary', self.orangeImage,    3)
         self.rec_orange = self.create_subscription(Image, name+'/orangebinary', lambda msg: self.procImage(msg, 'orange'), 3)
-        self.rec_blue = self.create_subscription(Image, name+'/bluebinary', lambda msg: self.procImage(msg, 'blue'), 3)
-        self.rec_green = self.create_subscription(Image, name+'/greenbinary', lambda msg: self.procImage(msg, 'green'), 3)
-        self.rec_red = self.create_subscription(Image, name+'/redbinary', lambda msg: self.procImage(msg, 'red'), 3)
-        self.rec_yellow = self.create_subscription(Image, name+'/yellowbinary', lambda msg: self.procImage(msg, 'yellow'), 3)
-        self.rec_yellow = self.create_subscription(Image, name+'/blackbinary', lambda msg: self.procImage(msg, 'black'), 3)
+        # self.rec_blue = self.create_subscription(Image, name+'/bluebinary', lambda msg: self.procImage(msg, 'blue'), 3)
+        # self.rec_green = self.create_subscription(Image, name+'/greenbinary', lambda msg: self.procImage(msg, 'green'), 3)
+        # self.rec_red = self.create_subscription(Image, name+'/redbinary', lambda msg: self.procImage(msg, 'red'), 3)
+        # self.rec_yellow = self.create_subscription(Image, name+'/yellowbinary', lambda msg: self.procImage(msg, 'yellow'), 3)
+        # self.rec_yellow = self.create_subscription(Image, name+'/blackbinary', lambda msg: self.procImage(msg, 'black'), 3)
 
         self.cmdmsg = JointState()
 
@@ -152,8 +152,8 @@ class BmoHanoi(Node):
     def procImage(self, msg, color):
         self.camera.hsvImageMap[color] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
-    # def orangeImage(self, msg):
-    #     self.camera.hsvImageMap['orange'] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
+    def orangeImage(self, msg):
+        self.camera.hsvImageMap['orange'] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
@@ -229,7 +229,7 @@ class BmoHanoi(Node):
                     np.zeros(self.jointShape, dtype=float))
         
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
-            xc, yc, zc = self.camera.getDonutLoc('orange')
+            xc, yc, zc = self.camera.getPriorityDonut('orange')
             # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
@@ -245,7 +245,7 @@ class BmoHanoi(Node):
             self.camera : CameraProcess
             x_bar, y_bar = self.camera.get_xy_bar(color)
 
-            kp = .5
+            kp = 1.25
             (p, R, jv, jr) = self.camChain.fkin(self.q)
 
             return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
@@ -314,7 +314,7 @@ class BmoHanoi(Node):
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
         
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
-            xc, yc, zc = self.camera.getDonutLoc('orange')
+            xc, yc, zc = self.camera.getPriorityDonut('orange')
             # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
