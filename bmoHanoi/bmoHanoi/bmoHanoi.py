@@ -241,7 +241,7 @@ class BmoHanoi(Node):
             self.camera : CameraProcess
             x_bar, y_bar = self.camera.get_xy_bar(color)
 
-            kp = 1.1
+            kp = .5
             (p, R, jv, jr) = self.camChain.fkin(self.q)
 
             return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
@@ -253,21 +253,18 @@ class BmoHanoi(Node):
 
         task_shape = (3,1)
 
-        self.get_logger().info(f"priority donut half{self.priorityDonut/2}")
-        self.get_logger().info(f"priority donut{self.priorityDonut}")
-
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, (self.taskPosition0 + self.priorityDonut) / 2, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
         self.get_logger().info(f"pd {pd}")
 
         wd = self.centerColor('orange')
 
-        # theta_x = np.arctan2(R[2, 1], R[2, 2])
-        # theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
-        # theta_z = np.arctan2(R[1, 0], R[0, 0])
+        theta_x = np.arctan2(R[2, 1], R[2, 2])
+        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        theta_z = np.arctan2(R[1, 0], R[0, 0])
 
-        # Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
-        # @ Rotx(theta_x + wd[0, 0]*1/RATE) 
+        Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
+        @ Rotx(theta_x + wd[0, 0]*1/RATE) 
 
         self.get_logger().info(f"josh trust deez{[wd.shape, R[0:3, 1:2].shape]}")
 
