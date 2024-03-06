@@ -262,12 +262,28 @@ class BmoHanoi(Node):
 
         wd = self.centerColor('orange')
 
-        theta_x = np.arctan2(R[2, 1], R[2, 2])
-        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
-        theta_z = np.arctan2(R[1, 0], R[0, 0])
+        # theta_x = np.arctan2(R[2, 1], R[2, 2])
+        # theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        # theta_z = np.arctan2(R[1, 0], R[0, 0])
 
-        Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
-        @ Rotx(theta_x + wd[0, 0]*1/RATE) 
+        # Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
+        # @ Rotx(theta_x + wd[0, 0]*1/RATE) 
+
+        self.get_logger().info(f"josh trust deez{[wd.shape, R[0:3, 1:2].shape]}")
+
+
+        # wd = exyz(wd[0, 0], wd[1, 0], wd[2, 0])
+
+        # y_desired = np.cross(wd[:, 0], R[0:3, 2:3][:, 0])  #np.cross(wd[:, 0], R[0:3, 1:2][:, 0])
+        
+        # a = angle(wd, R[0:3, 2:3][:, 0])
+
+        # a_d, a_vd = spline(self.state_machine.t, 1, 0.0, a, 0.0, 0.0)
+
+        # self.get_logger().info(f"angle {a}")
+
+        # Rd = Rote(wd, a_d) @ R
+        
 
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
 

@@ -28,6 +28,7 @@
 
 '''
 
+import math
 
 #
 #   Constant Helpers
@@ -77,6 +78,15 @@ def spline(t, T, p0, pf, v0, vf):
     v =     b     + 2*c * t    + 3*d * t**2
     return (p,v)
 
+
+def dotproduct(v1, v2):
+    return sum((a*b) for a, b in zip(v1, v2))
+
+def length(v):
+    return math.sqrt(dotproduct(v, v))
+
+def angle(v1, v2):
+    return math.acos(dotproduct(v1, v2) / (length(v1) * length(v2)))
 
 #
 #   Quintic Spline Helpers
