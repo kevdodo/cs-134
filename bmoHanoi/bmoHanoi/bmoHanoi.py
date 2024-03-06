@@ -225,7 +225,7 @@ class BmoHanoi(Node):
                     np.zeros(self.jointShape, dtype=float))
         
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
-            xc, yc, zc = self.camera.getPriorityDonut('orange')
+            xc, yc, zc = self.camera.getDonutLoc('orange')
             # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
@@ -310,7 +310,7 @@ class BmoHanoi(Node):
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
         
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
-            xc, yc, zc = self.camera.getPriorityDonut('orange')
+            xc, yc, zc = self.camera.getDonutLoc('orange')
             # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
