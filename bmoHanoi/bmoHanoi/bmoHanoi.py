@@ -9,6 +9,8 @@ COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                     'red': [(0,5), (160, 255), (70, 230)] 
                     }
 
+SPLINE_EFFORT_T = 7.0
+
 import cv2
 import numpy as np
 import copy
@@ -28,7 +30,8 @@ from bmoHanoi.StateMachine import StateMachine
 from bmoHanoi.CameraProcess import CameraProcess
 
 
-    
+
+
 
 
 
@@ -79,7 +82,7 @@ class BmoHanoi(Node):
         self.recon_joint = np.radians(np.array([0.0, -15, -60, 30, 0.0])).reshape(self.taskShape)
         self.taskPosition0, self.taskOrientation0, _, _ = self.chain.fkin(self.q)
 
-        self.grabpos = 0.0
+        self.grabpos = self.actualJointPos[-1]
         self.grabpos0 = self.grabpos
 
         self.pd = self.taskPosition0[:]
@@ -90,7 +93,7 @@ class BmoHanoi(Node):
         self.readyJointState = np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
         self.ready_Rd = Rotz(np.radians(180))
 
-        self.gam = 0.0
+        self.gam = 0.01
         self.lam = 10.0
 
         start = np.zeros(self.taskShape)
@@ -126,6 +129,8 @@ class BmoHanoi(Node):
         
         self.hsvImage = None                   
         self.depthImage = None  
+        
+        self.spline_effort = True
 
         self.state_dict = {'GOTO_REC': self.gotoRec, 
                     'REC' : self.recon, 
@@ -190,8 +195,6 @@ class BmoHanoi(Node):
         col = width//2
         row = height//2
         self.centerDist   = depth[row][col]
-        self.get_logger().info(
-            "Distance at (row %d, col %d) = %dmm" % (row, col, self.centerDist))
     
     def gotoRec(self):
         
@@ -249,9 +252,13 @@ class BmoHanoi(Node):
         # self.pd = self.taskPosition0[:]
 
         task_shape = (3,1)
-        
-        pd, vd = spline(self.state_machine.t, 2.2*self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
+
+        self.get_logger().info(f"priority donut half{self.priorityDonut/2}")
+        self.get_logger().info(f"priority donut{self.priorityDonut}")
+
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, (self.taskPosition0 + self.priorityDonut) / 2, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
+        self.get_logger().info(f"pd {pd}")
 
         wd = self.centerColor('orange')
 
@@ -418,8 +425,8 @@ class BmoHanoi(Node):
         task_shape =(3, 1)
         place = copy.deepcopy(self.priorityDonut)
         place[0:2, 0] = self.taskPosition0[0:2, 0]
-        
-        pd, vd = spline(self.state_machine.t, 2*self.state_machine.T, self.taskPosition0, place, np.zeros(task_shape, dtype=float), 
+        #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.taskPosition0 * 1/5 + (1-1/5)* place, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
 
         Rd = self.taskOrientation0
@@ -452,7 +459,7 @@ class BmoHanoi(Node):
         self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, -.6, 0.0, 0.0)
 
     def release(self):
-        self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, 0.0, 0.0, 0.0)
+        self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, 0.3, 0.0, 0.0)
 
     def executeState(self):
         return self.state_dict[self.state_machine.get_curr_state()]()
@@ -468,7 +475,8 @@ class BmoHanoi(Node):
         sec, nano = self.get_clock().now().seconds_nanoseconds()
 
         if self.state_machine.updateNextState(sec, nano, self.priorityDonut):
-            self.get_logger().info("donut")
+            # self.get_logger().info("donut")
+            self.spline_effort = False
 
             self.taskPosition0, self.taskOrientation0 , _, _ = self.chain.fkin(self.q) 
             self.grabpos0 = self.grabpos
@@ -481,12 +489,16 @@ class BmoHanoi(Node):
 
 
 
-
-        # self.pd = pd
         self.q = q[:]
-   
-        motor35eff = 9.81 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
-        motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        
+        # self.pd = pd
+        if self.spline_effort:    
+            p, _ = spline(self.state_machine.t, SPLINE_EFFORT_T, 0.0, 1.0, 0.0, 0.0)
+            motor35eff = 9.81 *p * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+            motor17offset = -0.07823752 * p * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+        else:
+            motor35eff = 9.81 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+            motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         q[1] = q[1] + motor17offset
 
         # if self.state_machine.grab:

@@ -94,7 +94,10 @@ def generate_launch_description():
     #                   {'motors':   ['3.3',  '3.5',      '3.4']},
     #                   {'joints':   ['base', 'shoulder', 'elbow']},
     #                   {'lifetime': 200.0}],
-    #     on_exit    = Shutdown())
+    #     on_exit    = Shutdown()) 
+    
+    
+    # {'testmode': 'track'
 
     node_hebi = Node(
         name       = 'hebi', 
@@ -102,8 +105,9 @@ def generate_launch_description():
         executable = 'hebinode',
         output     = 'screen',
         parameters = [{'family':   'robotlab'},
-                      {'motors':   ['3.6',  '1.7',      '3.5',     '3.4',  '3.3', '3.1']},
-                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']}],
+                      {'motors':   ['3.6',  '1.7',      '5.5',     '3.4',  '3.3', '3.1']},
+                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']},
+                      ],
         on_exit    = Shutdown())
 
 
@@ -161,7 +165,7 @@ def generate_launch_description():
         # node_gui,
 
         # # ALTERNATE: Start if we want RVIZ to watch the commands.
-        node_robot_state_publisher_ACTUAL,
+        node_robot_state_publisher_COMMAND,
         node_rviz,
         node_hebi,
         node_demo,
