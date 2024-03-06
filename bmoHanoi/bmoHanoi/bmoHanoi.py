@@ -41,7 +41,6 @@ class BmoHanoi(Node):
    
         # Initialize the node, naming it as specified
         super().__init__(name)
-
         self.camera = None
         def cb(msg):
             self.camera = CameraProcess(msg)
@@ -54,8 +53,6 @@ class BmoHanoi(Node):
         while not self.caminfoready:
             rclpy.spin_once(self)
         self.destroy_subscription(sub)  
-
-
         self.chain = KinematicChain('world', 'tip', self.jointnames()[:5])
         self.camChain = KinematicChain('world', 'camera', self.jointnames()[:5])
 
@@ -67,7 +64,6 @@ class BmoHanoi(Node):
         self.prSt = 'GOTO_REC'
         self.nxSt = 'GRAB'
         self.priorityDonut = None
-
         self.actualJointPos   = self.grabfbk()
         self.actualJointVel   = None
         self.actualJointEff   = None
@@ -117,7 +113,13 @@ class BmoHanoi(Node):
         # Create a subscriber to continually receive joint state messages.
         self.fbksub = self.create_subscription(
             JointState, '/joint_states', self.recvfbk, 10)
-        self.rec_orange = self.create_subscription(Image, name+'/binary', self.orangeImage,    3)
+        # self.rec_orange = self.create_subscription(Image, name + '/orangebinary', self.orangeImage,    3)
+        self.rec_orange = self.create_subscription(Image, name+'/orangebinary', lambda msg: self.procImage(msg, 'orange'), 3)
+        self.rec_blue = self.create_subscription(Image, name+'/bluebinary', lambda msg: self.procImage(msg, 'blue'), 3)
+        self.rec_green = self.create_subscription(Image, name+'/greenbinary', lambda msg: self.procImage(msg, 'green'), 3)
+        self.rec_red = self.create_subscription(Image, name+'/redbinary', lambda msg: self.procImage(msg, 'red'), 3)
+        self.rec_yellow = self.create_subscription(Image, name+'/yellowbinary', lambda msg: self.procImage(msg, 'yellow'), 3)
+        self.rec_yellow = self.create_subscription(Image, name+'/blackbinary', lambda msg: self.procImage(msg, 'black'), 3)
 
         self.cmdmsg = JointState()
 
@@ -147,9 +149,11 @@ class BmoHanoi(Node):
 
 
          #Create a temporary handler to grab the info.
-    
-    def orangeImage(self, msg):
-        self.camera.hsvImageMap['orange'] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
+    def procImage(self, msg, color):
+        self.camera.hsvImageMap[color] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
+
+    # def orangeImage(self, msg):
+    #     self.camera.hsvImageMap['orange'] = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
