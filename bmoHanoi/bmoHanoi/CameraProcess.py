@@ -13,16 +13,16 @@ class CameraProcess():
         indices = np.argwhere(arr)
 
         # Calculate the average index for x and y separately
-        avg_index_x = int(np.average(indices[:, 0]))
-        avg_index_y = int(np.average(indices[:, 1]))
+        avg_index_x = int(np.median(indices[:, 0]))
+        avg_index_y = int(np.median(indices[:, 1]))
         return avg_index_x, avg_index_y
 
     
     def ir_depth(self, color):
 
         dists = self.depthImage[self.hsvImageMap[color] != 0.0]
-
-        return np.nanmedian(dists)
+    
+        return np.nanmedian(dists[dists < 1500.0])
     
     def getPriorityDonut(self, color):
         camera_scale = 1000

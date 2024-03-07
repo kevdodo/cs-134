@@ -89,7 +89,7 @@ class BmoHanoi(Node):
         self.readyJointState = np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
         self.ready_Rd = Rotz(np.radians(180))
 
-        self.gam = 0.01
+        self.gam = 0.05
         self.lam = 10.0
 
         start = np.zeros(self.taskShape)
@@ -199,6 +199,7 @@ class BmoHanoi(Node):
         col = width//2
         row = height//2
         self.centerDist   = depth[row][col]
+        self.get_logger().info(f"bruh {self.centerDist}")
     
     def gotoRec(self):
         
@@ -234,18 +235,19 @@ class BmoHanoi(Node):
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
-        
+        self.get_logger().info(f"priority donut {self.priorityDonut}")
+
         return q, qdot
 
     
-    def centerColor(self, color):
+    def centerColor(self, color, kp):
         # Gives w for realsense
         if len(np.flatnonzero(self.camera.hsvImageMap[color])) > 50:
 
             self.camera : CameraProcess
             x_bar, y_bar = self.camera.get_xy_bar(color)
 
-            kp = 1.25
+            # kp = 1.25
             (p, R, jv, jr) = self.camChain.fkin(self.q)
 
             return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
@@ -253,15 +255,19 @@ class BmoHanoi(Node):
     
     def honeHalf(self):
         (p, R, jv, jr) = self.chain.fkin(self.q)
+        # (p, R, jv, jr) = self.chain.fkin(np.array(self.actualJointPos[:5]).reshape(5, 1))
+        self.get_logger().info(f"q {self.q}")
+        self.get_logger().info(f"actual q{self.actualJointPos}")
         # self.pd = self.taskPosition0[:]
 
         task_shape = (3,1)
 
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, (self.taskPosition0 + self.priorityDonut) / 2, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
-        self.get_logger().info(f"pd {pd}")
 
-        wd = self.centerColor('orange')
+        kp, _ = spline5(self.state_machine.t, self.state_machine.T, 0.0, .75, 0.0, 0.0, 0.0, 0.0)
+
+        wd = self.centerColor('orange', kp)
 
         theta_x = np.arctan2(R[2, 1], R[2, 2])
         theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
@@ -270,7 +276,7 @@ class BmoHanoi(Node):
         Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
         @ Rotx(theta_x + wd[0, 0]*1/RATE) 
 
-        self.get_logger().info(f"josh trust deez{[wd.shape, R[0:3, 1:2].shape]}")
+        self.get_logger().info(f"wd, R shape{[wd.shape, R[0:3, 1:2].shape]}")
 
 
         # wd = exyz(wd[0, 0], wd[1, 0], wd[2, 0])
@@ -279,7 +285,6 @@ class BmoHanoi(Node):
         
         # a = angle(wd, R[0:3, 2:3][:, 0])
 
-        # a_d, a_vd = spline(self.state_machine.t, 1, 0.0, a, 0.0, 0.0)
 
         # self.get_logger().info(f"angle {a}")
 
@@ -292,6 +297,9 @@ class BmoHanoi(Node):
     
     def hone(self):
         (p, R, jv, jr) = self.chain.fkin(self.q)
+        # (p, R, jv, jr) = self.chain.fkin(np.array(self.actualJointPos[:5]).reshape(5, 1))
+        self.get_logger().info(f"q {self.q}")
+        self.get_logger().info(f"actual q{self.actualJointPos}")
         # self.pd = self.taskPosition0[:]
 
         task_shape = (3,1)
@@ -300,9 +308,11 @@ class BmoHanoi(Node):
         #             np.zeros(task_shape, dtype=float))
 
         pd = self.taskPosition0
-
         vd = np.zeros((3, 1))
-        wd = self.centerColor('orange')
+
+
+        kp, _ = spline5(self.state_machine.t, self.state_machine.T, 0.0, .75, 0.0, 0.0, 0.0, 0.0)
+        wd = self.centerColor('orange', kp)
 
         theta_x = np.arctan2(R[2, 1], R[2, 2])
         theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
@@ -383,6 +393,7 @@ class BmoHanoi(Node):
         
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
+        self.get_logger().info(f"pd {pd}")
 
         R = self.taskOrientation0
 
@@ -441,8 +452,8 @@ class BmoHanoi(Node):
     def move_down(self):
         task_shape =(3, 1)
         place = copy.deepcopy(self.priorityDonut)
-        place[0:2, 0] = self.taskPosition0[0:2, 0]
-        #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place
+        place[2:3, 0] = self.taskPosition0[2:3, 0]
+        #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place    * 1/5 + (1-1/5)* place
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.taskPosition0 * 1/5 + (1-1/5)* place, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
 

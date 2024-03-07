@@ -147,7 +147,7 @@
   <joint name="final" type="fixed">
     <parent link="camera"/>
     <child  link="tip"/>
-    <origin xyz=".033 .063  -.01" rpy="0 0 0"/>
+    <origin xyz=".033 .058  -.0195" rpy="0 0 0"/>
   </joint>
 
   <link name="tip"/>

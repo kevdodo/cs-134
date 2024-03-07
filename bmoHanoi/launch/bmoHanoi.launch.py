@@ -165,7 +165,8 @@ def generate_launch_description():
         # node_gui,
 
         # # ALTERNATE: Start if we want RVIZ to watch the commands.
-        node_robot_state_publisher_COMMAND,
+        # node_robot_state_publisher_COMMAND,
+        node_robot_state_publisher_ACTUAL,
         node_rviz,
         node_hebi,
         node_demo,
