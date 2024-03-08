@@ -86,10 +86,10 @@ class BmoHanoi(Node):
         self.Rd = self.taskOrientation0
         self.wd = np.zeros((2, 1))
 
-        self.readyJointState = np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
+        self.readyJointState = np.radians(np.array([0.0, 0.0, -90, -0.0, 0.0])) # np.radians(np.array([0.0, -45.0, -135.0, -90, 0.0]))
         self.ready_Rd = Rotz(np.radians(180))
 
-        self.gam = 0.05
+        self.gam = 0.00
         self.lam = 10.0
 
         start = np.zeros(self.taskShape)
@@ -115,11 +115,11 @@ class BmoHanoi(Node):
             JointState, '/joint_states', self.recvfbk, 10)
         # self.rec_orange = self.create_subscription(Image, name + '/orangebinary', self.orangeImage,    3)
         self.rec_orange = self.create_subscription(Image, name+'/orangebinary', lambda msg: self.procImage(msg, 'orange'), 3)
-        # self.rec_blue = self.create_subscription(Image, name+'/bluebinary', lambda msg: self.procImage(msg, 'blue'), 3)
-        # self.rec_green = self.create_subscription(Image, name+'/greenbinary', lambda msg: self.procImage(msg, 'green'), 3)
-        # self.rec_red = self.create_subscription(Image, name+'/redbinary', lambda msg: self.procImage(msg, 'red'), 3)
-        # self.rec_yellow = self.create_subscription(Image, name+'/yellowbinary', lambda msg: self.procImage(msg, 'yellow'), 3)
-        # self.rec_yellow = self.create_subscription(Image, name+'/blackbinary', lambda msg: self.procImage(msg, 'black'), 3)
+        self.rec_blue = self.create_subscription(Image, name+'/bluebinary', lambda msg: self.procImage(msg, 'blue'), 3)
+        self.rec_green = self.create_subscription(Image, name+'/greenbinary', lambda msg: self.procImage(msg, 'green'), 3)
+        self.rec_red = self.create_subscription(Image, name+'/redbinary', lambda msg: self.procImage(msg, 'red'), 3)
+        self.rec_yellow = self.create_subscription(Image, name+'/yellowbinary', lambda msg: self.procImage(msg, 'yellow'), 3)
+        self.rec_yellow = self.create_subscription(Image, name+'/blackbinary', lambda msg: self.procImage(msg, 'black'), 3)
 
         self.cmdmsg = JointState()
 
@@ -144,7 +144,8 @@ class BmoHanoi(Node):
                     'GOTO_READY': self.gotoReady,
                     'GO_UP' :self.goUp,
                     'REC_HALF': self.recon,
-                    'MOVE_DOWN': self.move_down}
+                    'MOVE_DOWN': self.move_down,
+                    'SPECIAL_REC': self.special_recon}
         self.grabpos, self.grabvel = 0.0, 0.0
 
 
@@ -221,21 +222,44 @@ class BmoHanoi(Node):
 
         return q, qdot
     
-    
-    def recon(self):
+    def special_recon(self):
         self.priorityDonut = None
         q, qdot = spline(1, 1, np.array(self.initJointPos).reshape(self.jointShape),
                                            np.array(self.initJointPos).reshape(self.jointShape),
                                              np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
-        
+        ir = None
         if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
             xc, yc, zc = self.camera.getPriorityDonut('orange')
             # TODO: should this be self.q instead?
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.priorityDonut = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+            
+            ir = self.camera.ir_depth('orange')
+        self.get_logger().info(f"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq {self.q}")
+        self.get_logger().info(f"ir {ir}")
+
+        return q, qdot
+
+
+    def recon(self):
+        self.priorityDonut = None
+        q, qdot = spline(1, 1, np.array(self.initJointPos).reshape(self.jointShape),
+                                           np.array(self.initJointPos).reshape(self.jointShape),
+                                             np.zeros(self.jointShape, dtype=float), 
+                    np.zeros(self.jointShape, dtype=float))
+        ir = None
+        if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
+            xc, yc, zc = self.camera.getPriorityDonut('orange')
+            # TODO: should this be self.q instead?
+            (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
+            self.priorityDonut = np.array(p + R @ 
+                        np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+            
+            ir = self.camera.ir_depth('orange')
         self.get_logger().info(f"priority donut {self.priorityDonut}")
+        self.get_logger().info(f"ir {ir}")
 
         return q, qdot
 
@@ -248,16 +272,19 @@ class BmoHanoi(Node):
             x_bar, y_bar = self.camera.get_xy_bar(color)
 
             # kp = 1.25
-            (p, R, jv, jr) = self.camChain.fkin(self.q)
+            (p, R, jv, jr) = self.camChain.fkin(np.array(self.actualJointPos[:5]).reshape(5,1))
+
+            self.get_logger().info(f"v stuffffffffffffffffff {np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp}")
 
             return R @ (np.array([-1 * x_bar , 0, -y_bar]).reshape((3, 1)) * kp)
+        
         return np.zeros((3, 1))
     
     def honeHalf(self):
         (p, R, jv, jr) = self.chain.fkin(self.q)
         # (p, R, jv, jr) = self.chain.fkin(np.array(self.actualJointPos[:5]).reshape(5, 1))
-        self.get_logger().info(f"q {self.q}")
-        self.get_logger().info(f"actual q{self.actualJointPos}")
+        # self.get_logger().info(f"q {self.q}")
+        # self.get_logger().info(f"actual q{self.actualJointPos}")
         # self.pd = self.taskPosition0[:]
 
         task_shape = (3,1)
@@ -265,7 +292,7 @@ class BmoHanoi(Node):
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, (self.taskPosition0 + self.priorityDonut) / 2, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
 
-        kp, _ = spline5(self.state_machine.t, self.state_machine.T, 0.0, .75, 0.0, 0.0, 0.0, 0.0)
+        kp, _ = spline5(self.state_machine.t, self.state_machine.T, 0.0, 1.3, 0.0, 0.0, 0.0, 0.0)
 
         wd = self.centerColor('orange', kp)
 
@@ -276,7 +303,7 @@ class BmoHanoi(Node):
         Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
         @ Rotx(theta_x + wd[0, 0]*1/RATE) 
 
-        self.get_logger().info(f"wd, R shape{[wd.shape, R[0:3, 1:2].shape]}")
+        # self.get_logger().info(f"wd, R shape{[wd.shape, R[0:3, 1:2].shape]}")
 
 
         # wd = exyz(wd[0, 0], wd[1, 0], wd[2, 0])
@@ -452,7 +479,7 @@ class BmoHanoi(Node):
     def move_down(self):
         task_shape =(3, 1)
         place = copy.deepcopy(self.priorityDonut)
-        place[2:3, 0] = self.taskPosition0[2:3, 0]
+        place[0:2, 0] = self.taskPosition0[0:2, 0]
         #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place    * 1/5 + (1-1/5)* place
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.taskPosition0 * 1/5 + (1-1/5)* place, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
@@ -522,19 +549,37 @@ class BmoHanoi(Node):
         # self.pd = pd
         if self.spline_effort:    
             p, _ = spline(self.state_machine.t, SPLINE_EFFORT_T, 0.0, 1.0, 0.0, 0.0)
-            motor35eff = 9.81 *p * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+            motor35eff = 7.81 *p * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
             motor17offset = -0.07823752 * p * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         else:
-            motor35eff = 9.81 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
+            motor35eff = 7.81 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
             motor17offset = -0.07823752 * np.sin(self.actualJointPos[1] - self.actualJointPos[2])
         q[1] = q[1] + motor17offset
+
+        # ir = None
+        # if not self.spline_effort and len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
+        #     xc, yc, zc = self.camera.getPriorityDonut('orange')
+        #     ir = self.camera.ir_depth('orange')
+        #     # TODO: should this be self.q instead?
+        #     (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
+        #     self.priorityDonut = np.array(p + R @ 
+        #                 np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+            
+        # self.get_logger().info(f"ir depth: {ir}")
+        # if len(np.flatnonzero(self.camera.hsvImageMap['orange'])) > 50:
+        #     xc, yc, zc = self.camera.getPriorityDonut('orange')
+        #     # TODO: should this be self.q instead?
+        #     (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
+        #     self.priorityDonut = np.array(p + R @ 
+        #                 np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+            
+        #         # self.get_logger().info(f"q: {q}")
 
         # if self.state_machine.grab:
         q.append(self.grabpos)
         qdot.append(self.grabvel)
 
 
-        # self.get_logger().info(f"q: {q}")
         # self.get_logger().info(f"p: {pd}")
         # self.get_logger().info(f"t: {self.t}")
         # self.get_logger().info(f"dt: {self.dt}")

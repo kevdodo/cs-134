@@ -3,7 +3,7 @@ REC_T = 1
 GOTO_PRI_T = 5
 GRAB_T = 3
 READY_T = 10
-HONE_T = 5
+HONE_T = 7
 GO_UP_T = 4
 HOLD_T = 3
 PRI_HALF_T = 5
@@ -27,7 +27,8 @@ TIME_DICT = {'GOTO_REC' : GOTO_REC_T,
                           'REC_PEG': REC_T,
                           'GOTO_PEG': GOTO_PEG_T,
                           'GO_DOWN': GO_UP_T,
-                          'HOLD_OFF': HOLD_T}
+                          'HOLD_OFF': HOLD_T,
+                          'SPECIAL_REC': REC_T}
 
 class StateMachine():
     def __init__(self, sec, nano):
@@ -85,6 +86,8 @@ class StateMachine():
                 self.nxSt = 'GOTO_REC'
             case 'GOTO_PEG':
                 self.nxSt = 'GO_DOWN'
+            case 'SPECIAL_REC':
+                self.nxSt = 'GOTO_REC'
                   
           self.t = 0.0
           self.dt = 0.0
