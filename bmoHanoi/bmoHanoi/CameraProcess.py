@@ -1,4 +1,5 @@
 import numpy as np
+DISK_COLOR_MAP = {1:"red", 2: "orange", 3:"yellow", 4:"green", 5: "blue"} 
 
 class CameraProcess():
     def __init__(self, msg):
@@ -29,6 +30,21 @@ class CameraProcess():
         # Get the minimum value
         return np.nanmedian(dists)
     
+    def getDonutColors(self):
+        heights = []
+        for color_idx in range(1, 6):
+            color = DISK_COLOR_MAP[color_idx]
+            if len(np.flatnonzero(self.hsvImageMap[color])) > 1000:
+                heights.append((self.ir_depth(color), color_idx))
+        return sorted(heights, key=lambda x : x[0])
+    
+    def getTopColors(self):
+        heights = []
+        for color_idx in range(1, 6):
+            color = DISK_COLOR_MAP[color_idx]
+            if len(np.flatnonzero(self.hsvImageMap[color])) > 1000:
+                heights.append((self.ir_depth(color), color_idx))
+        return sorted(heights, key=lambda x : x[0])
         
     # def kevin_tweaked(self, color):
 
@@ -93,49 +109,7 @@ class CameraProcess():
 
     # #     return v, u, dists[v, u]
 
-    def final_tweak(self, color):
-        shape = self.depthImage.shape
-        dists = np.copy(self.depthImage)
-        dists[self.hsvImageMap[color] != 0.0] = 0.0
-
-        dists[dists > 1500.0] = 0.0
-
-        dists[dists < 10] = 0.0
-
-
-
-        # dists = self.depthImage[self.hsvImageMap[color] != 0.0]
-
-        # dists = dists[dists < 1500.0]
-        # dists = dists[dists > 10]
-
-        # dists = dists.reshape(shape)
-
-        cx, cy = self.average_index_of_ones(self.hsvImageMap[color])
-
-        # count = 0
-        # for i in range(100):
-        #     if (dists[cx+i, cy] != 0) and (count > 10):
-        #         break
-            
-        #     if (dists[cx+i, cy] != 0):
-        #         count += 1
-    
-        # if i == 99:
-        #     print('bruhhhhhhhh')
-        # # valid = np.argwhere(dists[cy:max(cy+100, len(dists[:, cx])),cx])
-        
-
-        # # median_dist = np.median(dists[valid])
-        # # print("valid", valid)
-        # print("median", dists[cx+i, cy])
-
-
-
-
-        return cx, cy+i, dists[cx+i][cy]
-
-    def getPriorityDonut(self, color):
+    def getDonutLoc(self, color):
         camera_scale = 1000
 
         v, u = self.average_index_of_ones(self.hsvImageMap[color])
