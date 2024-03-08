@@ -106,8 +106,7 @@ def generate_launch_description():
         output     = 'screen',
         parameters = [{'family':   'robotlab'},
                       {'motors':   ['3.6',  '1.7',      '5.5',     '3.4',  '3.3', '3.1']},
-                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']},
-                      ],
+                      {'joints':   ['base', 'shoulder', 'elbow', 'wrist', 'head', 'gripper']}],
         on_exit    = Shutdown())
 
 

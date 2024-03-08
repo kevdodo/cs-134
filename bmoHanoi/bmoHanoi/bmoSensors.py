@@ -14,7 +14,8 @@ COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                  'green': [(40, 80), (55, 220), (35, 175)],
                   'yellow': [(15, 55), (65, 255), (150, 255)],
                    'orange': [(0, 15), (80, 255), (146, 255)],
-                    'red': [(0,5), (160, 255), (70, 230)]}
+                    'red': [(0,3), (151, 255), (90, 255)],
+                    'black': [(74, 119), (11, 156), (0, 95)]}
 
 class CameraNode(Node):
     # Initialization.
@@ -76,6 +77,7 @@ class CameraNode(Node):
         for color in COLOR_HSV_MAP.keys():
             binary = cv2.inRange(hsv, np.array(COLOR_HSV_MAP[color])[:,0], 
                                     np.array(COLOR_HSV_MAP[color])[:,1])
+
             self.color_publishers[color].publish(self.bridge.cv2_to_imgmsg(binary))
 
             self.hsvImageMap[color] = binary
