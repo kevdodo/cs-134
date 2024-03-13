@@ -2,8 +2,8 @@ import curses
 
 from typing import List
 
-DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", 9999: "black"} 
-COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black": 9999}
+DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", 9999: "black1", 9999: "black2", 9999: "black3"} 
+COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black1": 9999, "black2": 9999, "black3": 9999}
 
 class Tower:
     def __init__ (self, name):
@@ -57,6 +57,8 @@ class TowersOfHanoiSolver:
 
     def get_optimal_move(self):
         """Gets the right """
+        if None in self.top_colors:
+            return None, None
 
         if self.small_move:
             # get smallest, and move to the right

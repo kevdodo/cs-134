@@ -1,7 +1,7 @@
 import numpy as np
 
-DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", -1:"black"} 
-COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black": -1}
+DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", -1 : "black1", -1 : "black2", -1 : "black3"} 
+COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black1": -1, "black2": -1, "black3": -1}
 
 import cv2
 
@@ -19,11 +19,23 @@ class CameraProcess():
         self.prev_img = {}
 
     def average_index_of_ones(self, color):
-        arr = self.filter_binary_color(color)
+        if color in ['black1', 'black2', 'black3']:
+            arr = self.filter_binary_color('black')
+        else:
+            arr = self.filter_binary_color(color)
+
         # arr = self.hsvImageMap[color]
+
+        # left most peg
+        shape = arr.shape
+        if color == 'black1':
+            arr[:, :shape[0] // 3] = 0    
+        if color == 'black2':
+            arr[:, shape[0] // 3: (2 * shape[0]) // 3] = 0
+        if color == 'black3':
+            arr[:, (2 * shape[0]) // 3:] = 0
         indices = np.argwhere(arr)
 
-        print(len(np.flatnonzero(indices)))
 
         # Calculate the average index for x and y separately
         avg_index_x = int(np.nanmedian(indices[:, 0]))
@@ -89,8 +101,15 @@ class CameraProcess():
         while curr_idx < 3:
             colors = []
             for color in COLOR_TO_DISK_MAP:
-                image_map = self.hsvImageMap[color]
-                if len(np.flatnonzero(image_map)) > 50:
+                if 'black' in color and color != f'black{curr_idx + 1}':
+                    continue
+                        
+                if color in ['black1', 'black2', 'black3']:
+                    image_map = self.hsvImageMap['black']
+                else:
+                    image_map = self.hsvImageMap[color]
+
+                if len(np.flatnonzero(image_map)) > 500:
 
                     xc, yc, zc = self.getDonutLoc(color)
                     # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
@@ -101,15 +120,15 @@ class CameraProcess():
                     # gets the correct partition
                     partitioned_map = image_map[:, curr_idx*num_cols : (curr_idx+1) * num_cols]
                     # print(curr_idx, color, len(np.flatnonzero(partitioned_map)))
-                    if len(np.flatnonzero(partitioned_map)) > 50:
+                    if len(np.flatnonzero(partitioned_map)) > 500:
                         colors.append([donut_position[2, 0], color])
             valid_colors = sorted(colors, key = lambda x : x[0], reverse=True )
 
-            print(valid_colors)
+            print("valid colors: ", valid_colors)
             # left_to_right_colors.append(valid_colors[0][1])
             if len(valid_colors) > 0:
                 col = valid_colors[0][1]
-                if col != 'black':
+                if col not in ['black1', 'black2', 'black3']:
                     left_to_right_colors[curr_idx] = col
                 else:
                     if len(valid_colors) == 1:
@@ -219,8 +238,12 @@ class CameraProcess():
         x_bar = coords[0][0][0]
 
         y_bar = coords[0][0][1]
+        if color in ['black1', 'black2', 'black3']:
+            zc = self.ir_depth('black')
+        else:
+            zc = self.ir_depth(color)
 
-        zc = self.ir_depth(color)
+
 
         # fx = self.camK[0, 0]
         # fy = self.camK[1, 1]

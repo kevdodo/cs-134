@@ -279,8 +279,11 @@ class BmoHanoi(Node):
         self.priorityDonut = None
         self.firstVD = True
         
+        
+        self.get_logger().info(f"bruhhhh : {[self.priorityDonut_color, self.pegCol]}")
 
-        if not self.updated_state:
+
+        if not self.updated_state or (not self.priorityDonut_color or not self.pegCol):
             self.update_state()
             self.updated_state = True
 
@@ -290,13 +293,14 @@ class BmoHanoi(Node):
                                              np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
         
-        self.get_logger().info(f"peg colllllll {self.pegCol}")
-
-        self.get_logger().info(f"priority donut collororor {self.priorityDonut_color}")
 
 
+        pegCol = 'black' if self.pegCol in ['black1', 'black2', 'black3'] else self.pegCol
+        donutCol = 'black' if self.priorityDonut_color in ['black1', 'black2', 'black3'] else self.priorityDonut_color
 
-        if self.pegCol and len(np.flatnonzero(self.camera.hsvImageMap[self.pegCol])) > 100:
+
+
+        if self.pegCol and len(np.flatnonzero(self.camera.hsvImageMap[pegCol])) > 100:
             xc, yc, zc = self.camera.getDonutLoc(self.pegCol)
             # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
         
@@ -304,7 +308,7 @@ class BmoHanoi(Node):
             self.peg = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))            
             self.peg[2,0] = self.peg[2,0] - ((1/.25)*(self.peg[0,0] + .0375))/HEAT
-        if self.priorityDonut_color and len(np.flatnonzero(self.camera.hsvImageMap[self.priorityDonut_color])) > 100:
+        if self.priorityDonut_color and len(np.flatnonzero(self.camera.hsvImageMap[donutCol])) > 100:
             xc, yc, zc = self.camera.getDonutLoc(self.priorityDonut_color)
             # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
         
@@ -376,7 +380,9 @@ class BmoHanoi(Node):
     
     def centerColor(self, color, kp):
         # Gives w for realsense
-        if color is None or len(np.flatnonzero(self.camera.hsvImageMap[color])) < 50:
+        col = 'black' if color in ['black1', 'black2', 'black3'] else color
+
+        if color is None or len(np.flatnonzero(self.camera.hsvImageMap[col])) < 50:
             return np.zeros((3, 1))
 
         self.camera : CameraProcess
@@ -802,6 +808,7 @@ class BmoHanoi(Node):
                 self.updated_state = False
             self.get_logger().info(f"place {self.place}")
             self.get_logger().info(f"donut, peg {[self.priorityDonut_color, self.pegCol]}")
+            self.get_logger().info(f" state: {self.solver.top_colors}")
 
         self.state_machine.updateTime(sec, nano)
         self.state_machine.updateState()
