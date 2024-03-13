@@ -1,14 +1,17 @@
-GOTO_REC_T = 7
+GOTO_REC_T = 4
 REC_T = 1
-GOTO_PRI_T = 5
+GOTO_PRI_T = 3
 GRAB_T = 3
 GAME_STATE_T = 5
 HONE_T = 7
 GO_UP_T = 4
 HOLD_T = 3
-PRI_HALF_T = 5
-HONE_HALF_T = 5
+HONE_HALF_T = 4
+PRI_HALF_T = 3
+HONE_HALF_T = 3
 MOVE_DOWN_T = 4
+BAD_GRAB_T = 3
+
 
 GOTO_PEG_T = 6
 
@@ -28,7 +31,8 @@ TIME_DICT = {'GOTO_REC' : GOTO_REC_T,
                           'GOTO_PEG': GOTO_PEG_T,
                           'GO_DOWN': GO_UP_T,
                           'HOLD_OFF': HOLD_T,
-                          'SPECIAL_REC': REC_T}
+                          'SPECIAL_REC': REC_T,
+                          'BAD_GRAB': BAD_GRAB_T}
 
 class StateMachine():
     def __init__(self, sec, nano):
@@ -61,7 +65,7 @@ class StateMachine():
     def updateState(self):
         self.prSt = self.nxSt
 
-    def updateNextState(self, sec, nano, priorityDonut, place):
+    def updateNextState(self, sec, nano, priorityDonut, place, successful_grab):
         if (self.t < self.T):
             self.nxSt = self.prSt
         else:
@@ -91,7 +95,12 @@ class StateMachine():
             case 'HOLD':
                 self.nxSt = 'GO_UP'
             case 'GO_UP':
-                self.nxSt = 'GOTO_REC'
+                if not successful_grab:
+                    self.nxSt = 'BAD_GRAB'
+                else:
+                    self.nxSt = 'GOTO_REC'
+            case 'BAD_GRAB':
+                  self.nxSt = 'REC_HALF'
             case 'GOTO_PEG':
                 self.nxSt = 'GO_DOWN'
             case 'GO_DOWN':

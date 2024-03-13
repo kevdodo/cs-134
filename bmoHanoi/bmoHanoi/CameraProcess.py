@@ -36,7 +36,7 @@ class CameraProcess():
         shape = self.depthImage.shape
         dists = self.depthImage[self.hsvImageMap[color] != 0.0]
 
-        dists = dists[dists < 1500.0]
+        dists = dists[dists < 1000.0]
         dists = dists[dists > 10]
 
         # Get the minimum value
@@ -67,8 +67,19 @@ class CameraProcess():
                 heights.append((height, color_idx))
         # print(sorted(heights, key=lambda x : x[0], reverse=True))
         return sorted(heights, key=lambda x : x[0], reverse=True)
+
+    def onFloor(self, color):
+        _, _, height = self.getDonutLoc(color)
+        return height > .12 
+
+        # heights = []
+        # for color_idx in range(1, 6):
+        #     color = DISK_COLOR_MAP[color_idx]
+        #     if len(np.flatnonzero(self.hsvImageMap[color])) > 1000:
+        #         heights.append((self.ir_depth(color), color_idx))
+        # return sorted(heights, key=lambda x : x[0])
     
-    def get_game_state(self):
+    def get_game_state(self, p, R):
         shape = self.hsvImageMap['blue'].shape
 
         left_to_right_colors =  [None, None, None]
@@ -79,15 +90,22 @@ class CameraProcess():
             colors = []
             for color in COLOR_TO_DISK_MAP:
                 image_map = self.hsvImageMap[color]
-                
-                # gets the correct partition
-                partitioned_map = image_map[:, curr_idx*num_cols : (curr_idx+1) * num_cols]
-                # print(curr_idx, color, len(np.flatnonzero(partitioned_map)))
-                if len(np.flatnonzero(partitioned_map)) > 50:
-                    colors.append([len(np.flatnonzero(partitioned_map)), color])
-            valid_colors = sorted(colors, key = lambda x : x[0], reverse=True)
+                if len(np.flatnonzero(image_map)) > 50:
 
-            # print(valid_colors)
+                    xc, yc, zc = self.getDonutLoc(color)
+                    # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
+                
+                    donut_position = np.array(p + R @ 
+                            np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
+                    
+                    # gets the correct partition
+                    partitioned_map = image_map[:, curr_idx*num_cols : (curr_idx+1) * num_cols]
+                    # print(curr_idx, color, len(np.flatnonzero(partitioned_map)))
+                    if len(np.flatnonzero(partitioned_map)) > 50:
+                        colors.append([donut_position[2, 0], color])
+            valid_colors = sorted(colors, key = lambda x : x[0], reverse=True )
+
+            print(valid_colors)
             # left_to_right_colors.append(valid_colors[0][1])
             if len(valid_colors) > 0:
                 col = valid_colors[0][1]
@@ -152,7 +170,7 @@ class CameraProcess():
             binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # Draw all contours on the original image for debugging.
-        #cv2.drawContours(frame, contours, -1, self.blue, 2)
+        # cv2.drawContours(frame, contours, -1, self.blue, 2)
 
         # Only proceed if at least one contour was found.  You may
         # also want to loop over the contours...
@@ -165,8 +183,8 @@ class CameraProcess():
                 box = np.int0(box)
                 # cv2.drawContours(frame,[box],0,(0,0,255),2)
 # 
-                center_x = int(np.average([x[0] for x in box]))
-                center_y = int(np.average([x[1] for x in box]))
+                # center_x = int(np.average([x[0] for x in box]))
+                # center_y = int(np.average([x[1] for x in box]))
 
 
                 ((ur, vr), radius) = cv2.minEnclosingCircle(contour)

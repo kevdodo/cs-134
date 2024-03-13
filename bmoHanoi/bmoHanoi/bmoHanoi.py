@@ -21,7 +21,7 @@ from bmoHanoi.towers import TowersOfHanoiSolver
 
 RATE = 100
 
-HEAT = 58
+HEAT = 45
 
 COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                  'green': [(40, 80), (55, 220), (35, 175)],
@@ -75,7 +75,8 @@ class BmoHanoi(Node):
 
         self.grabpos = self.actualJointPos[-1]
         self.grabpos0 = self.grabpos
-
+        self.firstVD = True
+        self.firstGOTOPEG = True
         self.pd = self.taskPosition0[:]
         self.vd = np.zeros((3, 1))
         self.Rd = self.taskOrientation0
@@ -144,7 +145,8 @@ class BmoHanoi(Node):
                     'GOTO_PEG': self.gotoPeg,
                     'GOTO_REC_PEG': self.gotoRec,
                     'GO_DOWN' : self.goDown,
-                    'SPECIAL_REC': self.special_recon}
+                    'SPECIAL_REC': self.special_recon,
+                    'BAD_GRAB': self.look_again}
         self.grabpos, self.grabvel = 0.0, 0.0
 
         self.peg = None
@@ -154,6 +156,9 @@ class BmoHanoi(Node):
 
         self.place = False
         self.updated_state = False
+
+        self.successful_grab = True
+
 
 
         self.solver =  TowersOfHanoiSolver()
@@ -237,7 +242,7 @@ class BmoHanoi(Node):
 
         # self.get_logger().info(f"colorssss: {self.peg}")
         place = copy.deepcopy(self.taskPosition0)
-        place[2, 0] -= .1
+        place[2, 0] -= .16
 
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, 
                         place, np.zeros(task_shape, dtype=float), 
@@ -272,6 +277,8 @@ class BmoHanoi(Node):
 
     def recon(self):
         self.priorityDonut = None
+        self.firstVD = True
+        
 
         if not self.updated_state:
             self.update_state()
@@ -296,7 +303,7 @@ class BmoHanoi(Node):
             (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
             self.peg = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))            
-            self.peg[2,0] = self.peg[2,0] - ((1/.35)*self.peg[0,0])/HEAT
+            self.peg[2,0] = self.peg[2,0] - ((1/.25)*(self.peg[0,0] + .0375))/HEAT
         if self.priorityDonut_color and len(np.flatnonzero(self.camera.hsvImageMap[self.priorityDonut_color])) > 100:
             xc, yc, zc = self.camera.getDonutLoc(self.priorityDonut_color)
             # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
@@ -307,7 +314,7 @@ class BmoHanoi(Node):
             
 
             
-            self.priorityDonut[2,0] = self.priorityDonut[2,0] - ((1/.35)*self.priorityDonut[0,0])/HEAT
+            self.priorityDonut[2,0] = self.priorityDonut[2,0] - ((1/.25)*(self.priorityDonut[0,0] + .0375))/HEAT
             # if len(np.flatnonzero(self.camera.hsvImageMap['blue'])) > 50:
         #     xc, yc, zc = self.camera.getPriorityDonut('blue')
         #     # TODO: should this be self.q instead?
@@ -330,7 +337,7 @@ class BmoHanoi(Node):
                     np.zeros(task_shape, dtype=float))
         
         pd[1] += .01
-        pd[0] += .0075
+        pd[0] += -.0105
 
         R = self.taskOrientation0
 
@@ -360,6 +367,9 @@ class BmoHanoi(Node):
         Rdot = wdx @ Rd
         
         wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
+        if self.firstGOTOPEG:
+            qdot = np.zeros( (5,1), dtype="float")
+            self.firstGOTOPEG = False
 
         self.grab()
         return self.ikin(pd, vd, wd, Rd, stage="reach")
@@ -427,6 +437,10 @@ class BmoHanoi(Node):
         
 
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
+        if self.firstVD:
+            qdot = np.zeros( (5,1), dtype="float")
+            self.firstVD = False
+
 
         return q, qdot
     def updatePriorityDonut(self):
@@ -627,32 +641,6 @@ class BmoHanoi(Node):
 
         endPick = np.radians([-37.0, -37.0, degree])#
 
-        
-        # self.get_logger().info(f"degree1: {90 - np.degrees(np.arctan(y/x))}")
-
-        # self.get_logger().info(f"degree: {np.degrees(np.arctan(y/x))}")
-        # self.get_logger().info(f"degree00: {degree}")
-        # self.get_logger().info(f"degree2: {np.degrees(theta_z)}")
-        # if abs(theta_z - np.pi) < abs(theta_z):
-        #     endPick[2] = np.pi
-       
-        # else:
-        #     if theta_z < 0:
-        #         theta_z = 2*np.pi + theta_z
-        # self.get_logger().info(f"degree3: {np.degrees(theta_z)}")
-
-        # else:
-        #     if theta_z > -np.pi:
-        #         theta_z = 2*np.pi - theta_z
-        # if theta_y > np.pi:
-        #     theta_y = -(2*np.pi - theta_y)
-        # if theta_x > np.pi:
-        #     theta_x = -(2*np.pi - theta_x)
-
-
-        # if abs(theta_z - np.radians(180.0 - (90 - np.degrees(np.arctan2(y, x))))) > \
-        # abs(theta_z - np.pi + np.radians(90 - np.degrees(np.arctan2(y, x)))):
-        #     endPick[2] = -np.pi  + np.radians(90 - np.degrees(np.arctan2(y, x)))
 
         a, a_dot = spline(self.state_machine.t, self.state_machine.T, 
                                   theta_x, endPick[0], 0.0, 0.0)
@@ -676,11 +664,14 @@ class BmoHanoi(Node):
         wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
         place[0:2, 0] = self.taskPosition0[0:2, 0]
         #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place    * 1/5 + (1-1/5)* place
-        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.taskPosition0 * 1/5 + (1-1/5)* place, np.zeros(task_shape, dtype=float), 
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.reconPos * 1/5 + (1-1/5)* place, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
         
         if not self.place:
             self.release()
+
+        self.bad_grab_pd = self.reconPos * 1/5 + (1-1/5)* place
+        self.bad_grab_rd = Rd
             
         return self.ikin(pd, vd, wd, Rd, stage="reach")
 
@@ -704,19 +695,78 @@ class BmoHanoi(Node):
         self.release()
         return self.ikin(pd, vd, wd, Rd)
     
+    def look_again(self):
+
+        task_shape =(3, 1)
+        place = None
+        if self.place:
+            place = copy.deepcopy(self.peg)
+        else:
+            place = copy.deepcopy(self.priorityDonut)
+        # place = copy.deepcopy(self.priorityDonut)
+
+
+        R = self.taskOrientation0
+
+        theta_x = np.arctan2(R[2, 1], R[2, 2])
+        theta_y = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+        theta_z = np.arctan2(R[1, 0], R[0, 0])
+
+        x, y = place[0, 0] - self.bad_grab_pd[0, 0], place[1, 0] - self.bad_grab_pd[1, 0]
+
+
+        if np.degrees(np.arctan(y/x)) > 0:
+            degree = 180.0 - (90 - np.degrees(np.arctan(y/x)))
+        else:
+            degree = 180.0 + (90 + (np.degrees(np.arctan(y/x))))
+            theta_z = 2*np.pi+theta_z
+
+        endPick = np.radians([-37.0, -37.0, degree])#
+
+
+        a, a_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_x, endPick[0], 0.0, 0.0)
+        
+        b, b_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_y, endPick[1], 0.0, 0.0)
+        
+        c, c_dot = spline(self.state_machine.t, self.state_machine.T, 
+                                  theta_z, endPick[2], 0.0, 0.0)
+
+
+        wdx = np.array([[0, -c_dot, b_dot], [c_dot, 0, -a_dot], [-b_dot, a_dot, 0]])
+        
+        Rd = Rotz(c) @ Roty(b) @ Rotx(a) 
+
+        Rdot = wdx @ Rd
+        #        wd = np.zeros((3,1))#ez()*a_dot + Rotz(a) @ (ey()*b_dot + Roty(b) @ ex()*c_dot) 
+
+        # wd = np.zeros((3,1))#ez()*a_dot + Rotz(a) @ (ey()*b_dot + Roty(b) @ ex()*c_dot) 
+
+        wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
+        place[0:2, 0] = self.taskPosition0[0:2, 0]
+        #self.taskPosition0 * 1/1.45 + (1-1/1.45)* place    * 1/5 + (1-1/5)* place
+        pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.bad_grab_pd, np.zeros(task_shape, dtype=float), 
+                    np.zeros(task_shape, dtype=float))
+        
+        self.release()
+            
+        return self.ikin(pd, vd, wd, Rd, stage="reach")
+    
     def grab(self):
         self.grabpos, self.grabvel = spline(self.state_machine.t, self.state_machine.T, self.grabpos0, -.6, 0.0, 0.0)
 
     def release(self):
-        self.grabpos, self.grabvel = spline(min(self.state_machine.t, 2.0), 2.0, self.grabpos0, 0.3, 0.0, 0.0)
+        self.grabpos, self.grabvel = spline(min(self.state_machine.t, 0.5), .5, self.grabpos0, 0.3, 0.0, 0.0)
 
     def executeState(self):
         return self.state_dict[self.state_machine.get_curr_state()]()
 
     def update_state(self):
         # if self.state_machine.prSt == 'REC' and not self.updated_state:
-        
-        donuts = self.camera.get_game_state()
+        (p, R, _, _) = self.camChain.fkin(np.array(self.actualJointPos[:5]))
+
+        donuts = self.camera.get_game_state(p, R)
 
         self.get_logger().info(f"donuts {donuts}")
 
@@ -733,14 +783,19 @@ class BmoHanoi(Node):
         q, qdot = self.executeState()
 
         sec, nano = self.get_clock().now().seconds_nanoseconds()
+        
+        
+        self.successful_grab = self.actualJointEff[-1] < -2.0
 
-        if self.state_machine.updateNextState(sec, nano, self.priorityDonut_color, self.place):
+        if self.state_machine.updateNextState(sec, nano, self.priorityDonut_color, self.place, self.successful_grab):
             self.spline_effort = False
 
             self.taskPosition0, self.taskOrientation0 , _, _ = self.chain.fkin(q) 
             self.grabpos0 = self.grabpos
             self.initJointPos  = self.q
-            if self.state_machine.prSt == 'GO_UP':
+
+
+            if self.state_machine.prSt == 'GO_UP' and self.successful_grab:
                 self.place = True
             if self.state_machine.prSt == 'GOTO_PEG':
                 self.place = False
