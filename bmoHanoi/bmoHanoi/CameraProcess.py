@@ -29,11 +29,12 @@ class CameraProcess():
         # left most peg
         shape = arr.shape
         if color == 'black1':
-            arr[:, :shape[0] // 3] = 0    
+            arr[:, shape[0] // 3:] = 0    
         if color == 'black2':
-            arr[:, shape[0] // 3: (2 * shape[0]) // 3] = 0
-        if color == 'black3':
+            arr[:, : shape[0] // 3] = 0
             arr[:, (2 * shape[0]) // 3:] = 0
+        if color == 'black3':
+            arr[:, :(2 * shape[0]) // 3] = 0
         indices = np.argwhere(arr)
 
 
@@ -103,13 +104,18 @@ class CameraProcess():
             for color in COLOR_TO_DISK_MAP:
                 if 'black' in color and color != f'black{curr_idx + 1}':
                     continue
+                    
                         
                 if color in ['black1', 'black2', 'black3']:
                     image_map = self.hsvImageMap['black']
                 else:
                     image_map = self.hsvImageMap[color]
 
-                if len(np.flatnonzero(image_map)) > 500:
+                print("shapee", image_map.shape)
+                
+                print(f'{color}1', len(np.flatnonzero(image_map)))
+
+                if len(np.flatnonzero(image_map)) > 90:
 
                     xc, yc, zc = self.getDonutLoc(color)
                     # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
@@ -119,8 +125,10 @@ class CameraProcess():
                     
                     # gets the correct partition
                     partitioned_map = image_map[:, curr_idx*num_cols : (curr_idx+1) * num_cols]
+                    print(f'{color}1', len(np.flatnonzero(partitioned_map)))
+
                     # print(curr_idx, color, len(np.flatnonzero(partitioned_map)))
-                    if len(np.flatnonzero(partitioned_map)) > 500:
+                    if len(np.flatnonzero(partitioned_map)) > 90:
                         colors.append([donut_position[2, 0], color])
             valid_colors = sorted(colors, key = lambda x : x[0], reverse=True )
 
@@ -174,7 +182,7 @@ class CameraProcess():
     def get_contours(self, color):
         binary = self.hsvImageMap[color]
 
-        binary = self.filter_binary_color(color)
+        # binary = self.filter_binary_color(color)
         # Erode and Dilate. Definitely adjust the iterations!
 
         iter = 4

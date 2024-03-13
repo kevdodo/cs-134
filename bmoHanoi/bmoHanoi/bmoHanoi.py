@@ -791,7 +791,7 @@ class BmoHanoi(Node):
         sec, nano = self.get_clock().now().seconds_nanoseconds()
         
         
-        self.successful_grab = self.actualJointEff[-1] < -2.0
+        self.successful_grab = self.actualJointEff[-1] < -3.5
 
         if self.state_machine.updateNextState(sec, nano, self.priorityDonut_color, self.place, self.successful_grab):
             self.spline_effort = False
