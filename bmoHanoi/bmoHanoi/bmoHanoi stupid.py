@@ -24,6 +24,12 @@ COLOR_HSV_MAP = {'blue': [(85, 118), (175,255), (59, 178)],
                    'orange': [(0, 15), (80, 255), (146, 255)],
                     'red': [(0,5), (160, 255), (70, 230)] 
                     }
+
+TIME_DICT = {'GOTO_REC' : GOTO_REC_T, 
+                          'REC' : REC_T, 
+                          'GOTO_PRI' : GOTO_PRI_T,
+                          'GRAB' : GRAB_T, 
+                          'GOTO_READY': READY_T}
 import cv2
 import numpy as np
 
@@ -184,46 +190,46 @@ class BmoHanoi(Node):
         row = height//2
         self.centerDist   = depth[row][col]
 
-    # Process the image (detect the ball).
-    def rgb_process(self, msg):
-        # Confirm the encoding and report.
-        assert(msg.encoding == "rgb8")
-        # self.get_logger().info(
-        #     "Image %dx%d, bytes/pixel %d, encoding %s" %
-        #     (msg.width, msg.height, msg.step/msg.width, msg.encoding))
+    # # Process the image (detect the ball).
+    # def rgb_process(self, msg):
+    #     # Confirm the encoding and report.
+    #     assert(msg.encoding == "rgb8")
+    #     # self.get_logger().info(
+    #     #     "Image %dx%d, bytes/pixel %d, encoding %s" %
+    #     #     (msg.width, msg.height, msg.step/msg.width, msg.encoding))
 
-        # Convert into OpenCV image, using RGB 8-bit (pass-through).
-        frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
+    #     # Convert into OpenCV image, using RGB 8-bit (pass-through).
+    #     frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
 
-        # Update the HSV limits (updating the control window).
+    #     # Update the HSV limits (updating the control window).
 
-        # Convert to HSV
-        hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-        # hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)  # Cheat: swap red/blue
+    #     # Convert to HSV
+    #     hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+    #     # hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)  # Cheat: swap red/blue
 
-        # Threshold in Hmin/max, Smin/max, Vmin/max
-        binary = cv2.inRange(hsv, self.hsvlimits[:,0], self.hsvlimits[:,1])
+    #     # Threshold in Hmin/max, Smin/max, Vmin/max
+    #     binary = cv2.inRange(hsv, self.hsvlimits[:,0], self.hsvlimits[:,1])
 
-        self.hsvImage = binary
+    #     self.hsvImage = binary
 
-        # Grab the image shape, determine the center pixel.
-        (H, W, D) = frame.shape
-        uc = W//2
-        vc = H//2
+    #     # Grab the image shape, determine the center pixel.
+    #     (H, W, D) = frame.shape
+    #     uc = W//2
+    #     vc = H//2
 
-        # Draw the center lines.  Note the row is the first dimension.
-        frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
-        frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
+    #     # Draw the center lines.  Note the row is the first dimension.
+    #     frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
+    #     frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
 
-        # Report the center HSV values.  Note the row comes first.
-        # self.get_logger().info(
-        #     "Center pixel HSV = (%3d, %3d, %3d)" % tuple(hsv[vc, uc]))
+    #     # Report the center HSV values.  Note the row comes first.
+    #     # self.get_logger().info(
+    #     #     "Center pixel HSV = (%3d, %3d, %3d)" % tuple(hsv[vc, uc]))
 
-        # Convert the frame back into a ROS image and republish.
-        self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))
+    #     # Convert the frame back into a ROS image and republish.
+    #     self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))
 
-        # Also publish the thresholded binary (black/white) image.
-        self.pubbin.publish(self.bridge.cv2_to_imgmsg(binary))
+    #     # Also publish the thresholded binary (black/white) image.
+    #     self.pubbin.publish(self.bridge.cv2_to_imgmsg(binary))
     
     def saveFdbck(self,pd):
         self.positionCmds.append(pd)
@@ -317,7 +323,7 @@ class BmoHanoi(Node):
 
     # must be cyclic
     def recon(self):
-        self.priorityDonut = None
+        self.priorityDonut = np.array([.18, .50, .06])
         q, qdot = spline(1, 1, self.recon_joint, self.recon_joint, np.zeros(self.jointShape, dtype=float), 
                     np.zeros(self.jointShape, dtype=float))
         

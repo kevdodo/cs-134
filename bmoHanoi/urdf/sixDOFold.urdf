@@ -1,0 +1,186 @@
+<?xml version="1.0"?>
+
+<robot name="sixDOF">
+  
+  <!-- *************************************************** -->
+  <!-- ******************** Kinematics ******************* -->
+  <!-- *************************************************** -->
+
+  <link name="world"/>
+
+  <joint name="placement" type="fixed">
+    <parent link="world"/>
+    <child  link="baseplate"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>			<!-- WHERE IS THE BASE -->
+  </joint>
+
+  <!-- BASE PLATE: Shift across the base plate to the base motor. --> 
+  <link name="baseplate">
+    <visual>
+      <origin xyz="0.0 0.0 0.0125" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.2 0.1 0.0450"/>
+        </geometry>
+      <material name="wood"/>
+    </visual>
+  </link>
+
+  <joint name="baseplate" type="fixed">
+    <parent link="baseplate"/>
+    <child  link="basemotor"/>
+    <origin xyz="0 0 0.0450" rpy="0 0 1.5708"/>
+  </joint>
+
+  <link name="basemotor">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
+  
+  <joint name="base" type="continuous">
+    <parent link="basemotor"/>
+    <child  link="shouldermotor"/>
+    <origin xyz="0.032 0 0.0625" rpy="0 0 1.5708"/>
+    <axis   xyz="0 0 1"/>
+  </joint>
+  
+  <!-- SHOULDER MOTOR: Thickness: X5 = 31.1mm, X8 = 45.1mm -->
+  <link name="shouldermotor">
+    <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
+
+  <joint name="shoulder" type="continuous">
+    <parent link="shouldermotor"/>
+    <child  link="bicep"/>
+    <origin xyz="0 0 0.0" rpy="3.14159 3.14159 0"/>
+    <axis   xyz="1 0 0"/>
+  </joint>
+
+  <!-- UPPER ARM: Shift across the upper arm (1/4in thickness) -->
+  <link name="bicep">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 3.1415"/>
+      <geometry>
+      	<mesh filename="package://bmoHanoi/meshes/BMOArm.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="cyan"/>
+    </visual>
+    <!-- Add a visual element -->
+  </link>
+
+  <joint name="elbowBase" type="fixed">
+    <parent link="bicep"/>
+    <child  link="elbowmotor"/>
+    <origin xyz="0 0 .452" rpy="0 0 0"/>
+    <axis   xyz="1 0 0 "/>
+  </joint>
+
+  <link name="elbowmotor">
+    <visual>
+    <origin xyz="0 0 0" rpy="0 -1.5708 0"/>		
+      <geometry>
+        <mesh filename="package://bmoHanoi/meshes/X8.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hebi"/>
+    </visual>
+  </link>
+
+  <joint name="elbow" type="continuous">
+    <parent link="elbowmotor"/>
+    <child  link="forearm"/>
+    <origin xyz="-0.056 0 0" rpy="0 0 3.1415"/>
+    <axis   xyz="1 0 0 "/>
+  </joint>
+  
+  <link name="forearm">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -1.5708 3.1415"/>
+      <geometry>
+      	<mesh filename="package://bmoHanoi/meshes/BMOArm.stl"
+	      scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="cyan"/>
+    </visual>
+  </link>
+
+  <joint name="wrist" type="continuous">
+    <parent link="forearm"/>
+    <child  link="hand"/>
+    <origin xyz="-.048 0 .451" rpy="0 0 0"/>
+    <axis   xyz="-1 0 0"/>
+  </joint>
+
+  <link name="hand"/>
+
+  <joint name="head" type="continuous">
+    <parent link="hand"/>
+    <child  link="bruh"/>
+    <origin xyz="-.044 0 -.092" rpy="0 0 0"/>
+    <axis   xyz="0 0 -1"/>
+  </joint>
+  
+  <link name="bruh"/>
+
+
+  <joint name="temptoCam" type="fixed">
+    <parent link="bruh"/>
+    <child  link="camera"/>
+    <origin xyz="-.033 .078 -.017" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="camera"/>
+
+  <joint name="final" type="fixed">
+    <parent link="camera"/>
+    <child  link="tip"/>
+    <origin xyz=".033 .0655  -.0117" rpy="0 0 0"/>
+  </joint>
+
+  <link name="tip"/>
+
+
+  <!-- *************************************************** -->
+  <!-- ******************* RVIZ Colors ******************* -->
+  <!-- *************************************************** -->
+
+  <material name="white">    <color rgba="1.00 1.00 1.00 1"/>  </material>
+  <material name="gray">     <color rgba="0.60 0.60 0.60 1"/>  </material>
+  <material name="table">    <color rgba="0.85 0.77 0.77 1"/>  </material>
+  <material name="black">    <color rgba="0.00 0.00 0.00 1"/>  </material>
+
+  <material name="red">      <color rgba="1.00 0.00 0.00 1"/>  </material>
+  <material name="green">    <color rgba="0.00 1.00 0.00 1"/>  </material>
+  <material name="blue">     <color rgba="0.00 0.00 1.00 1"/>  </material>
+
+  <material name="cyan">     <color rgba="0.00 1.00 1.00 1"/>  </material>
+  <material name="magenta">  <color rgba="1.00 0.00 1.00 1"/>  </material>
+  <material name="yellow">   <color rgba="1.00 1.00 0.00 1"/>  </material>
+
+  <material name="orange">   <color rgba="1.00 0.65 0.00 1"/>  </material>
+  <material name="wood">  <color rgba="0.82 0.62 0.04 1"/>  </material>
+  <material name="hebi">  <color rgba="0.82 0.06 0.06 1"/>  </material>
+
+
+  <!-- *************************************************** -->
+  <!-- ****** Building Blocks (Visual AND Inertial) ****** -->
+  <!-- *************************************************** -->
+
+  <!-- *** World-Fixed: Mount 1, Motor 1 *** -->
+
+
+
+</robot>

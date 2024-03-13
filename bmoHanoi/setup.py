@@ -27,8 +27,8 @@ setup(
         'console_scripts': [
             'bmoHanoi                = bmoHanoi.bmoHanoi:main',
             'hsvtune_realsense       = bmoHanoi.hsvtune_realsense:main',
-            'bmoStates           = bmoHanoi.bmoStates:main'
-
+            'bmoSensors              = bmoHanoi.bmoSensors:main',
+            'bmoStates               = bmoHanoi.bmoStates:main'
         ],
     },
 )
