@@ -85,4 +85,9 @@ class TowersOfHanoiSolver:
             self.small_move = True
 
 
+        # Donuts can't be black
+        if donut_color in ['black1', 'black2', 'black3']:
+            return None, peg_color
+
+
         return donut_color, peg_color
