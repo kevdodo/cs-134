@@ -118,7 +118,7 @@ class CameraProcess():
 
                 # print("shapee", image_map.shape)
                 
-                print(f'{color}1', len(np.flatnonzero(image_map)))
+                # print(f'{color}1', len(np.flatnonzero(image_map)))
 
                 if len(np.flatnonzero(image_map)) > 400:
 
@@ -137,7 +137,7 @@ class CameraProcess():
                         colors.append([donut_position[2, 0], color])
             valid_colors = sorted(colors, key = lambda x : x[0], reverse=True )
 
-            print("valid colors: ", valid_colors)
+            # print("valid colors: ", valid_colors)
             # left_to_right_colors.append(valid_colors[0][1])
             if len(valid_colors) > 0:
                 col = valid_colors[0][1]
@@ -152,7 +152,7 @@ class CameraProcess():
             curr_idx += 1
         return left_to_right_colors
 
-    def filter_binary_color(self, color):
+    def filter_binary_color(self, color, hone=False):
         shape = self.depthImage.shape
 
         cond = self.hsvImageMap[color] == 0.0
@@ -163,8 +163,11 @@ class CameraProcess():
 
         dists[cond] = 0.0
         # print('nonzeros1', len(np.flatnonzero(dists)))
+        if hone:
+            dists[dists > 600.0] = 0.0
+        else:
+            dists[dists > 1000] = 0.0
 
-        dists[dists > 1500.0] = 0.0
         # print('nonzeros2', len(np.flatnonzero(dists)))
         dists[dists < 10] = 0.0
         # print('nonzeros3', len(np.flatnonzero(dists)))
@@ -176,6 +179,8 @@ class CameraProcess():
         map[dists_cond] = 0.0
 
         if len(np.flatnonzero(map)) == 0:
+            if color not in self.prev_img:
+                return None
             return self.prev_img[color]
         # print('nonzeros', len(np.flatnonzero(map)))
 
@@ -244,7 +249,7 @@ class CameraProcess():
 
         if half:
             if color in ['black1', 'black2', 'black3']:
-                # arr = np.copy(self.filter_binary_color('black'))
+                arr = np.copy(self.filter_binary_color('black', hone=True))
                 arr = self.hsvImageMap['black']
                 indices = np.argwhere(arr)
 
@@ -267,7 +272,7 @@ class CameraProcess():
             else:
                 # color = 'black'
                 # left most peg
-                arr = np.copy(self.filter_binary_color(color))
+                arr = np.copy(self.filter_binary_color(color, hone=True))
 
                 indices = np.argwhere(arr)
                 # Calculate the average index for x and y separately
@@ -279,7 +284,7 @@ class CameraProcess():
                 color = 'black'
                 # arr = self.hsvImageMap['black']
                 
-            arr = np.copy(self.filter_binary_color(color))
+            arr = np.copy(self.filter_binary_color(color, hone=True))
             indices = np.argwhere(arr)
             # Calculate the average index for x and y separately
             x = np.nanmedian(indices[:, 0])#[:int(indices.shape[0]//3)])

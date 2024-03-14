@@ -72,6 +72,8 @@ class TowersOfHanoiSolver:
         else:
             donut_color = sorted([COLOR_TO_DISK_MAP[color] for color in self.top_colors])
             second_smallest = DISK_COLOR_MAP[donut_color[1]]
+            if second_smallest == 'black3':
+                return None, None
 
             second_smallest_peg_idx = self.top_colors.index(second_smallest)
             smallest = DISK_COLOR_MAP[min([COLOR_TO_DISK_MAP[color] for color in self.top_colors])]

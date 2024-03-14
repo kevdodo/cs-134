@@ -41,7 +41,6 @@ class BmoHanoi(Node):
         # Initialize the node, naming it as specified
         super().__init__(name)
 
-        sleep(1.0)
         self.camera = None
         def cb(msg):
             self.camera = CameraProcess(msg)
@@ -50,6 +49,7 @@ class BmoHanoi(Node):
         self.get_logger().info("Waiting for camera info...")
         sub = self.create_subscription(CameraInfo, '/camera/color/camera_info', cb, 1)
         self.caminfoready = False
+        sleep(5.0)
 
         while not self.caminfoready:
             rclpy.spin_once(self)
@@ -73,6 +73,7 @@ class BmoHanoi(Node):
         self.jointShape = (5, 1)
 
         self.q = np.array(self.actualJointPos[:5]).reshape(self.jointShape)
+        self.qdot = np.zeros(self.jointShape)
 
         self.recon_joint = np.radians(np.array([0.0, -15, -60, 31, 0.0])).reshape(self.taskShape)
         self.taskPosition0, self.taskOrientation0, _, _ = self.chain.fkin(self.q)
@@ -169,6 +170,7 @@ class BmoHanoi(Node):
         self.donut_locs = []
 
         self.restart = False
+        self.error = False
 
 
         # self.sub = self.create_subscription(
@@ -314,7 +316,7 @@ class BmoHanoi(Node):
             if len(donuts_on_floor) > 0:
                 self.priorityDonut_color = donuts_on_floor[0]
                 self.pegCol = self.solver.top_colors[0]
-            self.get_logger().info(f"donuts on floor {donuts_on_floor}")
+            # self.get_logger().info(f"donuts on floor {donuts_on_floor}")
                 
             self.updated_state = True
 
@@ -322,7 +324,7 @@ class BmoHanoi(Node):
                 self.updated_state = False
 
             # self.get_logger().info(f"place {self.place}")
-            # self.get_logger().info(f"donut, peg {[self.priorityDonut_color, self.pegCol]}")
+            self.get_logger().info(f"donut, peg {[self.priorityDonut_color, self.pegCol]}")
             # self.get_logger().info(f" state: {self.solver.top_colors}")
 
         q, qdot = spline(1, 1, np.array(self.initJointPos).reshape(self.jointShape),
@@ -354,7 +356,7 @@ class BmoHanoi(Node):
 
         if self.pegCol and len(np.flatnonzero(self.camera.hsvImageMap[pegCol])) > 400:
             xc, yc, zc = self.camera.getDonutLoc(self.pegCol)
-            self.get_logger().info(f"color {[self.pegCol]}")
+            # self.get_logger().info(f"color {[self.pegCol]}")
 
             if xc == None:
                 self.pegCol = None
@@ -368,9 +370,12 @@ class BmoHanoi(Node):
             self.peg[2,0] = self.peg[2,0] - offset
             # self.peg[2,0] = self.peg[2,0] - ((1/.25)*(self.peg[0,0] + .0375))/HEAT
 
+            if self.peg[1, 0] > .75:
+                self.pegCol = None
+
         if self.priorityDonut_color and len(np.flatnonzero(self.camera.hsvImageMap[donutCol])) > 400:
 
-            self.get_logger().info(f"color donut{[self.priorityDonut_color]}")
+            # self.get_logger().info(f"color donut{[self.priorityDonut_color]}")
 
             xc, yc, zc = self.camera.getDonutLoc(self.priorityDonut_color)
             # self.get_logger().info(f"priority donut camera {[xc, yc, zc]}")
@@ -383,7 +388,10 @@ class BmoHanoi(Node):
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
             
             offset = self.priorityDonut[0,0] * 0.0893 - self.priorityDonut[1,0] * 0.094 - 0.0347
-            self.priorityDonut[2,0] = self.priorityDonut[2,0] - offset + .0021
+            self.priorityDonut[2,0] = self.priorityDonut[2,0] - offset - .007
+
+            if self.priorityDonut[1, 0] > .75:
+                self.priorityDonut_color = None
             # self.priorityDonut[2,0] = self.priorityDonut[2,0] - ((1/.25)*(self.priorityDonut[0,0] + .0375))/HEAT
 
  
@@ -407,14 +415,22 @@ class BmoHanoi(Node):
     
     def gotoPeg(self):
         task_shape =(3, 1)
+
+        if self.peg is None:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
         bruh = copy.deepcopy(self.peg)
         bruh[2, 0] = .35
+
+
+        
+        
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, 
                         bruh, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
         
         pd[1] += .01
-        pd[0] += -.005
+        # pd[0] += -.005
 
         R = self.taskOrientation0
 
@@ -444,6 +460,10 @@ class BmoHanoi(Node):
         Rdot = wdx @ Rd
         
         wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
+
+        if np.nan in pd or np.nan in Rd:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
         
         q, qdot = self.ikin(pd, vd, wd, Rd, stage="reach")
         if self.firstGOTOPEG:
@@ -489,10 +509,14 @@ class BmoHanoi(Node):
             color = self.priorityDonut_color
 
         task_shape = (3,1)
-        self.get_logger().info(f"plll {self.place}")
-        self.get_logger().info(f"prid {self.priorityDonut}")
-        self.get_logger().info(f"peg {[self.pegCol, self.peg]}")
-        self.get_logger().info(f"bruhhhh {[self.taskPosition0, place]}")
+        # self.get_logger().info(f"plll {self.place}")
+        # self.get_logger().info(f"prid {self.priorityDonut}")
+        # self.get_logger().info(f"peg {[self.pegCol, self.peg]}")
+        # self.get_logger().info(f"bruhhhh {[self.taskPosition0, place]}")
+
+        if place is None:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
 
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, 
                         self.taskPosition0 * 1/2 + (1-1/2)* place,   #(self.taskPosition0 + self.priorityDonut) / 2
@@ -512,6 +536,10 @@ class BmoHanoi(Node):
 
         
         # self.get_logger().info(f"bruhhhhh{wd, Rd}")
+        if np.nan in pd or np.nan in Rd:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
+
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
         if self.firstVD:
             qdot = np.zeros( (5,1), dtype="float")
@@ -576,6 +604,10 @@ class BmoHanoi(Node):
         Rd = Rotz(theta_z + wd[2, 0]*1/RATE) @ Roty(theta_y + wd[1, 0]*1/RATE)\
         @ Rotx(theta_x + wd[0, 0]*1/RATE) 
 
+        if np.nan in pd or np.nan in Rd:
+            self.state_machine.error = True
+            return self.q, self.qdot
+
         q, qdot = self.ikin(pd, vd, wd, Rd, stage='hone')
 
         
@@ -586,13 +618,15 @@ class BmoHanoi(Node):
             self.priorityDonut = np.array(p + R @ 
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))
             offset = (0.0893 * self.peg[0,0]) - (0.0830 * self.peg[1,0]) - 0.042687
-            self.peg[2,0] = self.peg[2,0] - offset
+            self.priorityDonut[2,0] = self.priorityDonut[2,0] - offset - .007
+            if self.priorityDonut[1, 0] > .75:
+                self.priorityDonut_color = None
         
         pegCol = 'black' if self.pegCol in ['black1', 'black2', 'black3'] else self.pegCol
 
         if self.pegCol and len(np.flatnonzero(self.camera.hsvImageMap[pegCol])) > 100:
             xc, yc, zc = self.camera.getDonutLoc(self.pegCol)
-            self.get_logger().info(f"color {[self.pegCol]}")
+            # self.get_logger().info(f"color {[self.pegCol]}")
 
             if xc == None:
                 self.pegCol = None
@@ -604,6 +638,9 @@ class BmoHanoi(Node):
                         np.array([xc, zc, -yc]).reshape((3,1))).reshape((3,1))      
             offset = (0.0893 * self.peg[0,0]) - (0.0830 * self.peg[1,0]) - 0.042687
             self.peg[2,0] = self.peg[2,0] - offset
+
+            if self.peg[1, 0] > .75:
+                self.pegCol = None
         return q, qdot
     
     def ikin(self, pd, vd, wd, Rd, stage=None):
@@ -639,6 +676,7 @@ class BmoHanoi(Node):
         
         # Save the joint value and desired values for next cycle.
         self.q  = q
+        self.qdot = qdot
         self.pd = pd
         self.Rd = Rd
 
@@ -666,9 +704,13 @@ class BmoHanoi(Node):
     def gotoPriPick(self):
         task_shape =(3, 1)
         
+        if self.priorityDonut is None:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
         pd, vd = spline(self.state_machine.t, self.state_machine.T, self.taskPosition0, self.priorityDonut, np.zeros(task_shape, dtype=float), 
                     np.zeros(task_shape, dtype=float))
-        self.get_logger().info(f"pd {pd}")
+        # self.get_logger().info(f"pd {pd}")
+
 
         R = self.taskOrientation0
 
@@ -703,6 +745,17 @@ class BmoHanoi(Node):
         wd = R @ np.array([Rd[:, 2].T @ Rdot[:, 1], Rd[:, 0].T @ Rdot[:, 2], Rd[:, 1].T @ Rdot[:, 0]]).reshape((3, 1))
 
         self.release()
+        # self.get_logger().info(f"pd:  {pd}")
+        # self.get_logger().info(f"vd:  {vd}")
+        # self.get_logger().info(f"wd:  {wd}")
+        # self.get_logger().info(f"rd: {Rd}")
+
+
+        if np.nan in pd or np.nan in Rd:
+            self.error = True
+            return np.array(self.q).reshape((5, 1)), np.array(self.qdot).reshape((5, 1))
+        
+
         return self.ikin(pd, vd, wd, Rd, stage="reach")
     
     def gotoPriPickHalf(self):
@@ -953,21 +1006,22 @@ class BmoHanoi(Node):
             if self.state_machine.prSt == 'GOTO_PEG':
                 self.place = False
                 self.updated_state = False
-            self.get_logger().info(f"priority_donut_loc {self.priorityDonut}")
+            self.get_logger().info(f"state {self.solver.top_colors}")
             self.donut_locs.append(self.priorityDonut)
 
 
 
-        if (not self.successful_grab and self.place):
+        if (not self.successful_grab and self.place) or self.error:
             self.state_machine.restart = True
             self.updated_state = False
             self.place = False
             self.state_machine.brodie = False
+            self.error = False
 
-        self.get_logger().info(f"state: {self.state_machine.prSt}")
-        self.get_logger().info(f"successful grab: {[self.successful_grab, self.actualJointEff[-1]]}")
+        # self.get_logger().info(f"state: {self.state_machine.prSt}")
+        # self.get_logger().info(f"successful grab: {[self.successful_grab, self.actualJointEff[-1]]}")
 
-        self.get_logger().info(f"time: {self.state_machine.t}")
+        # self.get_logger().info(f"time: {self.state_machine.t}")
             # np.save('/home/robot/robotws/src/cs-134/bruh2.npy', np.array(self.donut_locs))
 
 
@@ -984,6 +1038,7 @@ class BmoHanoi(Node):
 
 
         self.q = q[:]
+        self.qdot = qdot[:]
         
         # self.pd = pd
         if self.spline_effort:    
