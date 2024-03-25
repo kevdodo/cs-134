@@ -44,10 +44,11 @@ class CameraNode(Node):
                                                 self.rgb_process, 1)
         self.sub_depth = self.create_subscription(Image, '/camera/aligned_depth_to_color/image_raw',
                                                 self.depth_process, 1)
-        
+
         self.color_publishers = {}
         for color in COLOR_HSV_MAP:
             self.color_publishers[color] = self.create_publisher(Image,name + f'/{color}binary',    3)
+        
 
         self.hsvImageMap = {}
         
@@ -89,8 +90,8 @@ class CameraNode(Node):
         vc = H//2
 
         # Draw the center lines.  Note the row is the first dimension.
-        frame = cv2.line(frame, (uc,0), (uc,H-1), (255, 255, 255), 1)
-        frame = cv2.line(frame, (0,vc), (W-1,vc), (255, 255, 255), 1)
+        frame = cv2.line(frame, (W//3,0), (W//3,H-1), (255, 255, 255), 1)
+        frame = cv2.line(frame, (2*W//3,0), (2*W//3,H-1), (255, 255, 255), 1)
 
         # Convert the frame back into a ROS image and republish.
         self.pubrgb.publish(self.bridge.cv2_to_imgmsg(frame, "rgb8"))

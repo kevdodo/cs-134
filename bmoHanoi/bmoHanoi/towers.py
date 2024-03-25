@@ -2,8 +2,8 @@ import curses
 
 from typing import List
 
-DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", 9999: "black"} 
-COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black": 9999}
+DISK_COLOR_MAP = {5:"red", 4: "orange", 3:"yellow", 2:"green", 1: "blue", 9999: "black1", 9999: "black2", 9999: "black3"} 
+COLOR_TO_DISK_MAP = {"blue":1, "green":2, "yellow":3, "orange":4, "red":5, "black1": 9999, "black2": 9999, "black3": 9999}
 
 class Tower:
     def __init__ (self, name):
@@ -57,6 +57,8 @@ class TowersOfHanoiSolver:
 
     def get_optimal_move(self):
         """Gets the right """
+        if None in self.top_colors:
+            return None, None
 
         if self.small_move:
             # get smallest, and move to the right
@@ -70,6 +72,8 @@ class TowersOfHanoiSolver:
         else:
             donut_color = sorted([COLOR_TO_DISK_MAP[color] for color in self.top_colors])
             second_smallest = DISK_COLOR_MAP[donut_color[1]]
+            if second_smallest == 'black3':
+                return None, None
 
             second_smallest_peg_idx = self.top_colors.index(second_smallest)
             smallest = DISK_COLOR_MAP[min([COLOR_TO_DISK_MAP[color] for color in self.top_colors])]
@@ -81,6 +85,11 @@ class TowersOfHanoiSolver:
                     peg_color = self.top_colors[i]
                     donut_color = second_smallest
             self.small_move = True
+
+
+        # Donuts can't be black
+        if donut_color in ['black1', 'black2', 'black3']:
+            return None, peg_color
 
 
         return donut_color, peg_color
